@@ -1,7 +1,23 @@
-<!-- 21600000 = 6 hours in milliseconds -->
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+    21600000 = 6 hours. The platform clamps anything under 30 minutes, and this
+    widget mostly refreshes on demand anyway (see WidgetHelper.updateWidgets),
+    so the period is only a backstop.
+
+    targetCellWidth/Height state the intended 1x1 footprint outright for API 31+
+    launchers; minWidth/minHeight stay as the fallback for older ones, and the
+    layout itself no longer assumes a size either way.
+-->
 <appwidget-provider xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:tools="http://schemas.android.com/tools"
     android:initialLayout="@layout/widget_recording"
-    android:minHeight="40dp"
     android:minWidth="40dp"
+    android:minHeight="40dp"
+    android:targetCellWidth="1"
+    android:targetCellHeight="1"
     android:resizeMode="none"
-    android:updatePeriodMillis="21600000" />
+    android:widgetCategory="home_screen"
+    android:previewImage="@mipmap/ic_launcher"
+    android:previewLayout="@layout/widget_recording"
+    android:updatePeriodMillis="21600000"
+    tools:targetApi="31" />
