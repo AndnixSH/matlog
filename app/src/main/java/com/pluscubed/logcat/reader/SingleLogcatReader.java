@@ -66,8 +66,15 @@ public class SingleLogcatReader extends AbsLogcatReader {
     public String readLine() throws IOException {
         String line = bufferedReader.readLine();
 
-        if (recordingMode && lastLine != null) { // still skipping past the 'last line'
-            if (lastLine.equals(line) /*|| isAfterLastTime(line)*/) {
+        if (recordingMode && lastLine != null && line != null) { // still skipping past the 'last line'
+            // Matching the marker line exactly is not enough on its own. The
+            // marker is captured when the user asks to record, but the reader
+            // may only start seconds later - and since Android 17 puts a system
+            // log-access prompt in that window it is now routine. By then the
+            // busy main buffer has often rolled past the marker, so it is never
+            // emitted again and a pure equality test blocks forever. Seeing any
+            // line dated after the marker also means we are past it.
+            if (lastLine.equals(line) || isAfterLastTime(line)) {
                 lastLine = null; // indicates we've passed the last line
             }
         }

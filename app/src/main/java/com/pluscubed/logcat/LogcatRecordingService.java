@@ -118,11 +118,24 @@ public class LogcatRecordingService extends Service {
             }
             mReader = loader.loadReader();
 
+            int skipped = 0;
             while (mReader != null && !mReader.readyToRecord() && !mKilled) {
-                mReader.readLine();
                 // keep skipping lines until we find one that is past the last log line, i.e.
                 // it's ready to record
+                String skippedLine = mReader.readLine();
+                if (skippedLine == null) {
+                    // The reader is exhausted - logcat died, or we never had
+                    // access to its output. Bail out instead of blocking here
+                    // forever behind a "recording" notification that writes
+                    // nothing.
+                    log.e("log reader produced no more lines after %d; starting recording anyway", skipped);
+                    break;
+                }
+                if (++skipped % 2000 == 0) {
+                    log.d("still skipping to find the last-line marker; %d lines so far", skipped);
+                }
             }
+            log.d("past the marker after skipping %d lines", skipped);
             if (!mKilled) {
                 makeToast(R.string.log_recording_started, Toast.LENGTH_SHORT);
             }
@@ -243,7 +256,9 @@ public class LogcatRecordingService extends Service {
 
                 if (++lineCount % logLinePeriod == 0) {
                     // avoid OutOfMemoryErrors; flush now
-                    SaveLogHelper.saveLog(this, stringBuilder, filename);
+                    if (!SaveLogHelper.saveLog(this, stringBuilder, filename)) {
+                        log.e("failed to flush %d lines to %s", lineCount, filename);
+                    }
                     stringBuilder.delete(0, stringBuilder.length()); // clear
                 }
             }
@@ -288,7 +303,11 @@ public class LogcatRecordingService extends Service {
 
 
     private void makeToast(final int stringResId, final int toastLength) {
-        handler.post(Toast.makeText(LogcatRecordingService.this, stringResId, toastLength)::show);
+        // Both the Toast construction and the show() have to happen on the main
+        // thread: Toast.makeText() resolves a Looper for the *calling* thread and
+        // throws NPE on a plain worker thread. (This used to work by accident,
+        // because IntentService ran on a HandlerThread that had a Looper.)
+        handler.post(() -> Toast.makeText(LogcatRecordingService.this, stringResId, toastLength).show());
 
     }
 

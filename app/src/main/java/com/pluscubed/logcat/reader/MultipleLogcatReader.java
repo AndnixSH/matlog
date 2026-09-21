@@ -1,7 +1,5 @@
 package com.pluscubed.logcat.reader;
 
-import android.os.AsyncTask;
-
 import com.pluscubed.logcat.util.UtilLogger;
 
 import java.io.IOException;
@@ -68,18 +66,14 @@ public class MultipleLogcatReader extends AbsLogcatReader {
             thread.killed = true;
         }
 
-        // do in background, because otherwise we might hang
-        new AsyncTask<Void, Void, Void>() {
-
-            @Override
-            protected Void doInBackground(Void... params) {
-                for (ReaderThread thread : readerThreads) {
-                    thread.reader.killQuietly();
-                }
-                queue.offer(DUMMY_NULL);
-                return null;
+        // do off the calling thread, because otherwise we might hang.
+        // (This used to be an AsyncTask; AsyncTask is deprecated.)
+        new Thread(() -> {
+            for (ReaderThread thread : readerThreads) {
+                thread.reader.killQuietly();
             }
-        }.execute((Void) null);
+            queue.offer(DUMMY_NULL);
+        }, "logcat-reader-kill").start();
     }
 
 

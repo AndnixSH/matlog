@@ -2,6 +2,7 @@ package com.pluscubed.logcat.helper;
 
 import android.content.Context;
 import android.net.Uri;
+import android.provider.DocumentsContract;
 import android.widget.Toast;
 
 import androidx.documentfile.provider.DocumentFile;
@@ -116,25 +117,82 @@ public class SaveLogHelper {
     // --------------------------------------------------------- saved logs
 
     /**
+     * Document id of the resolved "matlog" directory, plus the tree it was
+     * resolved against, so the lookup is not repeated on every flush.
+     */
+    private static String cachedSaveDirId;
+    private static Uri cachedTreeUri;
+
+    /**
+     * Rebuilds a fully capable directory handle from a cached document id.
+     *
+     * <p>DocumentFile.fromSingleUri() is deliberately avoided here: it returns
+     * a SingleDocumentFile, and listFiles()/findFile() on one throws
+     * UnsupportedOperationException. Going through the tree URI yields a
+     * TreeDocumentFile, which supports the whole API.
+     */
+    private static DocumentFile dirFromId(Context context, Uri treeUri, String docId) {
+        Uri uri = DocumentsContract.buildDocumentUriUsingTree(treeUri, docId);
+        return DocumentFile.fromTreeUri(context, uri);
+    }
+
+    /**
      * The "matlog" folder inside the user-granted directory, creating it (and
      * asking for nothing - the grant already covers it) when {@code create} is
      * true.
      */
     private static DocumentFile getSavedLogsDirectory(Context context, boolean create) {
+        Uri treeUri = LogStorage.getTreeUri(context);
         DocumentFile picked = LogStorage.getPickedFolder(context);
-        if (picked == null) {
+        if (picked == null || treeUri == null) {
+            cachedSaveDirId = null;
+            cachedTreeUri = null;
             return null;
         }
 
+        // Reuse the directory we already resolved. This is called on every
+        // flush while recording (every ~200 lines), and each miss costs a full
+        // scan of the tree.
+        if (cachedSaveDirId != null && treeUri.equals(cachedTreeUri)) {
+            DocumentFile cached = dirFromId(context, treeUri, cachedSaveDirId);
+            if (cached != null && cached.isDirectory()) {
+                return cached;
+            }
+            cachedSaveDirId = null;
+        }
+
         DocumentFile dir = picked.findFile(SAVED_LOGS_DIR);
+        if (dir == null || !dir.isDirectory()) {
+            // findFile() matches the display name exactly, but providers backed
+            // by case-insensitive storage (external storage in particular) keep
+            // whatever capitalisation the folder was first created with - so an
+            // existing "Matlog" is invisible to a lookup for "matlog". Creating
+            // another one then yields "matlog (1)", "matlog (2)", ... and every
+            // flush lands somewhere different. Match case-insensitively first.
+            for (DocumentFile child : picked.listFiles()) {
+                if (child.isDirectory() && SAVED_LOGS_DIR.equalsIgnoreCase(child.getName())) {
+                    dir = child;
+                    break;
+                }
+            }
+        }
+
         if (dir != null && dir.isDirectory()) {
+            cachedSaveDirId = DocumentsContract.getDocumentId(dir.getUri());
+            cachedTreeUri = treeUri;
             return dir;
         }
 
         if (!create || !picked.canWrite()) {
             return null;
         }
-        return picked.createDirectory(SAVED_LOGS_DIR);
+
+        DocumentFile created = picked.createDirectory(SAVED_LOGS_DIR);
+        if (created != null) {
+            cachedSaveDirId = DocumentsContract.getDocumentId(created.getUri());
+            cachedTreeUri = treeUri;
+        }
+        return created;
     }
 
     public static boolean hasSavedLogsFolder(Context context) {
