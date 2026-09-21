@@ -71,6 +71,13 @@ android {
         sourceCompatibility JavaVersion.VERSION_17
         targetCompatibility JavaVersion.VERSION_17
     }
+
+    testOptions {
+        // LogcatQuery is parsed on a plain JVM, but the LogLines it is handed
+        // come from android.util.Log and android.text.TextUtils. Stubbing the
+        // android.jar methods to their defaults is enough to exercise it.
+        unitTests.returnDefaultValues = true
+    }
 }
 
 dependencies {
