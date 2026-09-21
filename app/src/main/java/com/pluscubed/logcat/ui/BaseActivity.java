@@ -55,7 +55,7 @@ public class BaseActivity extends AppCompatActivity {
         // View.setSystemUiVisibility is a no-op once the app draws edge to edge.
         WindowInsetsControllerCompat controller =
                 WindowCompat.getInsetsController(getWindow(), getWindow().getDecorView());
-        boolean lightTheme = ThemeWrapper.isLightTheme();
+        boolean lightTheme = ThemeWrapper.isLightTheme(this);
         controller.setAppearanceLightStatusBars(lightTheme);
         controller.setAppearanceLightNavigationBars(lightTheme);
 

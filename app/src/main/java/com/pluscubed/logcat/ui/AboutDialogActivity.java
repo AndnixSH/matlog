@@ -1,6 +1,7 @@
 package com.pluscubed.logcat.ui;
 
 import android.app.Dialog;
+import android.content.Context;
 import android.content.DialogInterface;
 import android.os.Bundle;
 import android.webkit.WebSettings;
@@ -47,8 +48,9 @@ public class AboutDialogActivity extends BaseActivity {
 
         public void initializeWebView(WebView view) {
             // Match webview style with application theme
-            String textColor = ThemeWrapper.isLightTheme() ? "#212121" : "#fff";
-            String bgColor = ThemeWrapper.isLightTheme() ? "#fff" : "#212121";
+            Context context = view.getContext();
+            String textColor = ThemeWrapper.isLightTheme(context) ? "#212121" : "#fff";
+            String bgColor = ThemeWrapper.isLightTheme(context) ? "#fff" : "#212121";
 
             String text = loadTextFile(R.raw.about_body);
             String version = PackageHelper.getVersionName(getActivity());

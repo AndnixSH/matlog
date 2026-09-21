@@ -2,14 +2,13 @@ package com.pluscubed.logcat.util;
 
 import android.app.Activity;
 import android.content.Context;
+import android.content.res.Configuration;
 import android.os.Build;
 
 import androidx.annotation.StyleRes;
 
 import com.pluscubed.logcat.App;
 import com.pluscubed.logcat.R;
-import com.pluscubed.logcat.data.ColorScheme;
-import com.pluscubed.logcat.helper.PreferenceHelper;
 
 /**
  * Created by Snow Volf on 16.07.2019, 20:40
@@ -20,33 +19,45 @@ public abstract class ThemeWrapper {
      * Apply theme to an Activity
      */
     public static void applyTheme(Activity ctx) {
-        int theme;
-        switch (Theme.values()[getThemeIndex()]) {
-            case LIGHT:
-                theme = R.style.Theme_MatLog_Light;
-                if (isDarkScheme(ctx)){
-                    PreferenceHelper.setColorScheme(ctx, ColorScheme.Light);
-                }
-                break;
-            case DARK:
-                theme = R.style.Theme_MatLog;
-                if (isLightScheme(ctx)) {
-                    PreferenceHelper.setColorScheme(ctx, ColorScheme.Dark);
-                }
-                break;
-            case AMOLED:
-                theme = R.style.Theme_MatLog_Amoled;
-                if (isLightScheme(ctx)) {
-                    PreferenceHelper.setColorScheme(ctx, ColorScheme.Amoled);
-                }
-                break;
-            default:
-                // Force use the light theme
-                theme = R.style.Theme_MatLog_Light;
-                break;
-        }
-        ctx.setTheme(theme);
+        ctx.setTheme(styleFor(resolveTheme(ctx)));
         applyAccent(ctx);
+    }
+
+    /**
+     * The theme actually in effect, with {@link Theme#AUTO} resolved against
+     * the system's day/night setting.
+     *
+     * <p>This deliberately does not touch the colour scheme preference. It used
+     * to force the colour scheme to match the app theme, which meant picking a
+     * dark colour scheme while the light app theme was selected got silently
+     * reverted the next time any activity was created.
+     */
+    public static Theme resolveTheme(Context context) {
+        Theme[] values = Theme.values();
+        int index = getThemeIndex();
+        Theme selected = (index >= 0 && index < values.length) ? values[index] : Theme.LIGHT;
+
+        if (selected != Theme.AUTO) {
+            return selected;
+        }
+
+        int uiMode = context.getResources().getConfiguration().uiMode;
+        return (uiMode & Configuration.UI_MODE_NIGHT_MASK) == Configuration.UI_MODE_NIGHT_YES
+                ? Theme.DARK
+                : Theme.LIGHT;
+    }
+
+    @StyleRes
+    private static int styleFor(Theme theme) {
+        switch (theme) {
+            case DARK:
+                return R.style.Theme_MatLog;
+            case AMOLED:
+                return R.style.Theme_MatLog_Amoled;
+            case LIGHT:
+            default:
+                return R.style.Theme_MatLog_Light;
+        }
     }
 
     private static void applyAccent(Context ctx){
@@ -115,69 +126,58 @@ public abstract class ThemeWrapper {
 
     @StyleRes
     public static int getDialogTheme(){
-        int theme;
-        switch (Theme.values()[getThemeIndex()]){
-            case LIGHT:
-                theme = com.google.android.material.R.style.Theme_MaterialComponents_Light_Dialog_Alert;
-                break;
+        switch (resolveTheme(App.get())) {
             case DARK:
-                theme = R.style.DarkAppTheme_Dialog;
-                break;
+                return R.style.DarkAppTheme_Dialog;
             case AMOLED:
-                theme = R.style.AmoledAppTheme_Dialog;
-                break;
+                return R.style.AmoledAppTheme_Dialog;
+            case LIGHT:
             default:
-                theme = com.google.android.material.R.style.Theme_MaterialComponents_Light_Dialog_Alert;
+                return com.google.android.material.R.style.Theme_MaterialComponents_Light_Dialog_Alert;
         }
-        return theme;
     }
 
     /**
      * Get a saved theme number
      */
     private static int getThemeIndex() {
-        return Integer.parseInt(App.get().getPreferences().getString("ui.theme", String.valueOf(Theme.LIGHT.ordinal())));
+        try {
+            return Integer.parseInt(App.get().getPreferences()
+                    .getString("ui.theme", String.valueOf(Theme.LIGHT.ordinal())));
+        } catch (NumberFormatException e) {
+            // A corrupt preference should not take down every activity that
+            // calls applyTheme(); fall back to the default.
+            return Theme.LIGHT.ordinal();
+        }
     }
 
     private static int getAccentIndex() {
         return  Integer.parseInt(App.get().getPreferences().getString("ui.accent",  String.valueOf(Accent.BLUE.ordinal())));
     }
 
-    public static boolean isLightTheme() {
-        return getThemeIndex() == Theme.LIGHT.ordinal();
+    public static boolean isLightTheme(Context context) {
+        return resolveTheme(context) == Theme.LIGHT;
     }
 
     public static int resolveNavBarColor(Context context) {
         // Android < Oreo does not have View.SYSTEM_UI_FLAG_LIGHT_NAVIGATION_BAR flag
         // so, we need to set it a little bit more darker
-        if (isLightTheme() && Build.VERSION.SDK_INT < Build.VERSION_CODES.O){
+        if (isLightTheme(context) && Build.VERSION.SDK_INT < Build.VERSION_CODES.O){
             return App.getColorFromAttr(context, androidx.appcompat.R.attr.colorPrimaryDark);
         }
         return  App.getColorFromAttr(context, androidx.appcompat.R.attr.colorPrimary);
     }
 
-    private static boolean isLightScheme(Context context) {
-        ColorScheme scheme = PreferenceHelper.getColorScheme(context);
-        return scheme == ColorScheme.Light
-                || scheme == ColorScheme.Tmobile
-                || scheme == ColorScheme.Att;
-    }
-
-    private static boolean isDarkScheme(Context context) {
-        ColorScheme scheme = PreferenceHelper.getColorScheme(context);
-        return  scheme == ColorScheme.Dark
-                || scheme == ColorScheme.Verizon
-                || scheme == ColorScheme.Sprint
-                || scheme == ColorScheme.Amoled;
-    }
-
     /**
-     * Provided themes
+     * Provided themes. Order matters: the stored preference holds the ordinal,
+     * so new entries may only be appended, never inserted.
      */
     public enum Theme {
         LIGHT,
         DARK,
-        AMOLED
+        AMOLED,
+        /** Follows the system's day/night setting. */
+        AUTO
     }
 
     private enum Accent{
