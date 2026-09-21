@@ -38,7 +38,7 @@ public class SettingsActivity extends BaseActivity {
         setContentView(R.layout.activity_settings);
 
         Toolbar toolbar = findViewById(R.id.toolbar_actionbar);
-        toolbar.setOverflowIcon(AppCompatResources.getDrawable(this, R.drawable.ic_more_vert_24dp));
+        toolbar.setOverflowIcon(AppCompatResources.getDrawable(this, R.drawable.ic_more_vert));
         setSupportActionBar(toolbar);
 
         FragmentManager fm = getFragmentManager();
@@ -112,6 +112,7 @@ public class SettingsActivity extends BaseActivity {
         }
 
         private void setUpPreferences() {
+            setCurrentValue("ui.accent");
             setCurrentValue("ui.theme");
             setCurrentValue("theme");
 
@@ -146,6 +147,8 @@ public class SettingsActivity extends BaseActivity {
 
             mThemePreference = findPreference("ui.theme");
             mThemePreference.setOnPreferenceChangeListener(this);
+
+            findPreference("ui.accent").setOnPreferenceChangeListener(this);
 
             bufferPreference = (MultipleChoicePreference) findPreference(getString(R.string.pref_buffer));
             bufferPreference.setOnPreferenceChangeListener(this);
@@ -214,6 +217,10 @@ public class SettingsActivity extends BaseActivity {
 
             } else if (preference.getKey().equals(getString(R.string.pref_theme))) {
                 setCurrentValue(preference.getKey());
+                return true;
+            } else if (preference.getKey().equals("ui.accent")) {
+                setCurrentValue(preference.getKey());
+                LocalBroadcastManager.getInstance(getActivity()).sendBroadcast(new Intent("org.openintents.action.REFRESH_THEME"));
                 return true;
             } else if (preference.getKey().equals(getString(R.string.pref_buffer))) {
                 // buffers pref

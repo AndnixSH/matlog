@@ -8,10 +8,10 @@
     <string name="add_filter_ellipsis">Добавить фильтр…</string>
 
     <plurals name="are_you_sure">
-        <item quantity="one">%d file will be deleted</item>
-        <item quantity="other">%d files will be deleted</item>
-        <item quantity="few">%d файлов будет удалёно</item>
-        <item quantity="many">%d файлов будет удалёно</item>
+        <item quantity="one">%d файл будет удалён</item>
+        <item quantity="other">%d файла будет удалено</item>
+        <item quantity="few">%d файлов будет удалено</item>
+        <item quantity="many">%d файлов будет удалено</item>
     </plurals>
 
     <string name="as_attachment">Как вложение</string>
@@ -191,4 +191,7 @@
     <string name="theme_light">Светлая</string>
     <string name="theme_dark">Тёмная</string>
     <string name="pref_app_theme">Тема приложения</string>
+    <string name="search_hint">Поиск логов…</string>
+    <string name="pref_ui_accent">Цвет акцента</string>
+    <string name="theme_amoled">AMOLED</string>
 </resources>

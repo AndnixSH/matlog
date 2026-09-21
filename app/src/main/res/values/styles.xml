@@ -5,20 +5,47 @@
         <item name="toolbarShadow">@drawable/shadow</item>
     </style>
 
-    <style name="Base.Theme.MatLog" parent="@style/Theme.AppCompat.NoActionBar">
+    <style name="Base.Theme.MatLog" parent="@style/Theme.MaterialComponents.NoActionBar">
         <item name="colorPrimary">@color/primary</item>
         <item name="colorPrimaryDark">@color/primary_dark</item>
         <item name="colorAccent">@color/accent</item>
-        <!--<item name="selectableItemBackground">@drawable/item_background_light</item>
-        <item name="android:selectableItemBackground">@drawable/item_background_light</item>-->
 
         <item name="android:textColor">?android:textColorPrimary</item>
-
         <item name="actionModeBackground">?colorPrimary</item>
-
         <item name="windowActionModeOverlay">true</item>
 
-        <!--<item name="activatedBackground">@drawable/activated_background_light</item>-->
+        <item name="popupMenuStyle">@style/PopupMenu</item>
+        <item name="android:windowBackground">@color/primary_dark</item>
+        <item name="android:windowIsTranslucent">true</item>
+        <item name="dialog_style">@color/dark_dialog</item>
+        <item name="alertDialogTheme">@style/DarkAppTheme.Dialog</item>
+        <item name="bottomSheetDialogTheme">@style/AppBottomSheetDialogTheme.Dark</item>
+        <item name="prefCardsBackground">@color/pref_card</item>
+        <item name="android:navigationBarColor">@android:color/transparent</item>
+    </style>
+
+    <style name="Theme.MatLog.Amoled" parent="Base.Theme.MatLog">
+        <item name="android:windowContentOverlay">@null</item>
+        <item name="toolbarShadow">@drawable/shadow</item>
+    </style>
+
+    <style name="Base.Theme.MatLog.Amoled" parent="@style/Theme.MaterialComponents.NoActionBar">
+        <item name="colorPrimary">@color/primary_amoled</item>
+        <item name="colorPrimaryDark">@color/primary_dark_amoled</item>
+        <item name="colorAccent">@color/accent_amoled</item>
+
+        <item name="android:textColor">?android:textColorPrimary</item>
+        <item name="actionModeBackground">?colorPrimary</item>
+        <item name="windowActionModeOverlay">true</item>
+
+        <item name="popupMenuStyle">@style/PopupMenu</item>
+        <item name="android:windowBackground">@color/primary_dark_amoled</item>
+        <item name="android:windowIsTranslucent">true</item>
+        <item name="dialog_style">@color/dark_dialog_amoled</item>
+        <item name="alertDialogTheme">@style/AmoledAppTheme.Dialog</item>
+        <item name="bottomSheetDialogTheme">@style/AppBottomSheetDialogTheme.Dark</item>
+        <item name="prefCardsBackground">@color/pref_card_amoled</item>
+        <item name="android:navigationBarColor">@android:color/transparent</item>
     </style>
 
     <style name="Theme.MatLog.Light" parent="Base.Theme.MatLog.Light">
@@ -26,23 +53,22 @@
         <item name="toolbarShadow">@drawable/shadow</item>
     </style>
 
-    <style name="Base.Theme.MatLog.Light" parent="@style/Theme.AppCompat.Light.NoActionBar">
+    <style name="Base.Theme.MatLog.Light" parent="@style/Theme.MaterialComponents.Light.NoActionBar">
         <item name="colorPrimary">@color/light_primary</item>
         <item name="colorPrimaryDark">@color/light_primary_dark</item>
         <item name="colorAccent">@color/light_accent</item>
-        <!--<item name="selectableItemBackground">@drawable/item_background_light</item>
-        <item name="android:selectableItemBackground">@drawable/item_background_light</item>-->
 
         <item name="android:textColor">?android:textColorPrimary</item>
-
         <item name="actionModeBackground">?colorPrimary</item>
-
         <item name="windowActionModeOverlay">true</item>
-
-        <!--<item name="activatedBackground">@drawable/activated_background_light</item>-->
+        <item name="android:windowIsTranslucent">true</item>
+        <item name="dialog_style">@android:color/white</item>
+        <item name="bottomSheetDialogTheme">@style/AppBottomSheetDialogTheme</item>
+        <item name="prefCardsBackground">@color/light_pref_card</item>
+        <item name="android:navigationBarColor">@android:color/transparent</item>
     </style>
 
-    <style name="Theme.MatLog.AlertDialog" parent="@style/Theme.AppCompat.Dialog.Alert">
+    <style name="Theme.MatLog.AlertDialog" parent="@style/Theme.MaterialComponents.Dialog.Alert">
         <item name="colorPrimary">@color/primary</item>
         <item name="colorPrimaryDark">@color/primary_dark</item>
         <item name="colorAccent">@color/accent</item>
@@ -53,5 +79,37 @@
 
         <item name="windowActionBar">false</item>
         <item name="windowNoTitle">true</item>
+    </style>
+
+    <style name="PopupMenu" parent="Widget.AppCompat.PopupMenu">
+        <item name="android:colorBackground">@color/primary_dark</item>
+    </style>
+
+    <style name="DarkAppTheme.Dialog" parent="Theme.MaterialComponents.Dialog.Alert">
+        <item name="android:statusBarColor">@android:color/transparent</item>
+        <item name="android:colorBackground">@color/dark_dialog</item>
+    </style>
+
+    <style name="AmoledAppTheme.Dialog" parent="Theme.MaterialComponents.Dialog.Alert">
+        <item name="android:statusBarColor">@android:color/transparent</item>
+        <item name="android:colorBackground">@color/dark_dialog_amoled</item>
+    </style>
+
+    <style name="AppBottomSheetDialogTheme" parent="Theme.MaterialComponents.Light.BottomSheetDialog">
+        <item name="bottomSheetStyle">@style/AppModalStyle</item>
+    </style>
+
+    <style name="AppBottomSheetDialogTheme.Dark" parent="Theme.MaterialComponents.BottomSheetDialog">
+        <item name="bottomSheetStyle">@style/AppModalStyle</item>
+    </style>
+
+    <style name="AppModalStyle" parent="Widget.Design.BottomSheet.Modal">
+        <item name="android:background">@drawable/dialog_background</item>
+        <item name="behavior_hideable">true</item>
+        <item name="behavior_skipCollapsed">false</item>
+    </style>
+
+    <style name="DialogOverlay">
+        <item name="android:windowBackground">@android:color/transparent</item>
     </style>
 </resources>

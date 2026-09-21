@@ -2,15 +2,21 @@ package com.pluscubed.logcat.ui;
 
 import android.app.Activity;
 import android.app.Dialog;
-import android.app.DialogFragment;
 import android.os.Bundle;
+import android.view.View;
+import android.widget.EditText;
+import android.widget.ImageButton;
 import android.widget.Toast;
 
+import androidx.annotation.NonNull;
+
 import com.afollestad.materialdialogs.MaterialDialog;
+import com.google.android.material.bottomsheet.BottomSheetDialogFragment;
 import com.pluscubed.logcat.R;
 import com.pluscubed.logcat.helper.DialogHelper;
 import com.pluscubed.logcat.helper.PreferenceHelper;
 import com.pluscubed.logcat.helper.WidgetHelper;
+import com.pluscubed.logcat.widget.dialogs.SweetViewDialog;
 
 import java.util.Arrays;
 import java.util.List;
@@ -22,7 +28,8 @@ public class RecordLogDialogActivity extends BaseActivity {
     @Override
     protected void onCreate(Bundle savedInstanceState) {
         super.onCreate(savedInstanceState);
-
+        // Fix window background overlay in dialog activities
+        getTheme().applyStyle(R.style.DialogOverlay, true);
         showDialog();
     }
 
@@ -30,11 +37,11 @@ public class RecordLogDialogActivity extends BaseActivity {
         final String[] suggestions = (getIntent() != null && getIntent().hasExtra(EXTRA_QUERY_SUGGESTIONS))
                 ? getIntent().getStringArrayExtra(EXTRA_QUERY_SUGGESTIONS) : new String[]{};
 
-        DialogFragment fragment = ShowRecordLogDialog.newInstance(suggestions);
-        fragment.show(getFragmentManager(), "showRecordLogDialog");
+        BottomSheetDialogFragment fragment = ShowRecordLogDialog.newInstance(suggestions);
+        fragment.show(getSupportFragmentManager(), "showRecordLogDialog");
     }
 
-    public static class ShowRecordLogDialog extends DialogFragment {
+    public static class ShowRecordLogDialog extends BottomSheetDialogFragment {
 
         public static final String QUERY_SUGGESTIONS = "suggestions";
 

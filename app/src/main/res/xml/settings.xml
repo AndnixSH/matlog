@@ -1,7 +1,8 @@
 <?xml version="1.0" encoding="utf-8"?>
 <PreferenceScreen xmlns:android="http://schemas.android.com/apk/res/android">
 
-    <PreferenceCategory android:title="@string/pref_cat_appearance">
+    <PreferenceCategory android:title="@string/pref_cat_appearance"
+        android:layout="@layout/pref_category_custom">
 
         <ListPreference
             android:defaultValue="0"
@@ -18,6 +19,13 @@
             android:persistent="true"
             android:title="@string/pref_theme_title" />
 
+        <ListPreference
+            android:defaultValue="4"
+            android:entries="@array/accent_names"
+            android:entryValues="@array/accent_values"
+            android:key="ui.accent"
+            android:title="@string/pref_ui_accent" />
+
         <com.afollestad.materialdialogs.prefs.MaterialListPreference
             android:defaultValue="@string/text_size_medium_value"
             android:entries="@array/text_sizes"
@@ -26,14 +34,14 @@
             android:persistent="true"
             android:title="@string/pref_text_size_title" />
 
-        <CheckBoxPreference
+        <com.pluscubed.logcat.widget.SweetSwitchPreference
             android:defaultValue="false"
             android:key="@string/pref_expanded_by_default"
             android:persistent="true"
             android:summary="@string/pref_expanded_by_default_summary"
             android:title="@string/pref_expanded_by_default_title" />
 
-        <CheckBoxPreference
+        <com.pluscubed.logcat.widget.SweetSwitchPreference
             android:defaultValue="true"
             android:key="@string/pref_show_timestamp"
             android:persistent="true"
@@ -42,7 +50,8 @@
 
     </PreferenceCategory>
 
-    <PreferenceCategory android:title="@string/pref_cat_configuration">
+    <PreferenceCategory android:title="@string/pref_cat_configuration"
+        android:layout="@layout/pref_category_custom">
 
         <!-- TODO: Switch to MultiSelectListPreference-->
         <com.pluscubed.logcat.widget.MultipleChoicePreference
@@ -63,7 +72,8 @@
 
     </PreferenceCategory>
 
-    <PreferenceCategory android:title="@string/pref_cat_advanced">
+    <PreferenceCategory android:title="@string/pref_cat_advanced"
+        android:layout="@layout/pref_category_custom">
 
         <com.pluscubed.logcat.widget.NonnegativeIntegerEditTextPreference
             android:defaultValue="@string/pref_log_line_period_default"
@@ -86,7 +96,7 @@
             android:summary="@string/pref_filter_pattern_summary"
             android:title="@string/pref_filter_pattern_title" />
 
-        <SwitchPreference
+        <com.pluscubed.logcat.widget.SweetSwitchPreference
             android:key="scrubber"
             android:title="@string/scrubber"
             android:summary="@string/scrubber_summary"
@@ -94,7 +104,8 @@
 
     </PreferenceCategory>
 
-    <PreferenceCategory android:title="@string/about">
+    <PreferenceCategory android:title="@string/about"
+        android:layout="@layout/pref_category_custom">
 
         <Preference
             android:key="@string/pref_about"

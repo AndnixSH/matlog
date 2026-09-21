@@ -10,20 +10,25 @@ import android.webkit.WebView;
 import com.afollestad.materialdialogs.MaterialDialog;
 import com.pluscubed.logcat.R;
 import com.pluscubed.logcat.helper.PackageHelper;
+import com.pluscubed.logcat.util.ThemeWrapper;
 import com.pluscubed.logcat.util.UtilLogger;
 
 import java.io.BufferedReader;
 import java.io.IOException;
 import java.io.InputStream;
 import java.io.InputStreamReader;
+import java.util.Locale;
 
 public class AboutDialogActivity extends BaseActivity {
+    private static final String TAG = "AboutDialogActivity";
 
     private static UtilLogger log = new UtilLogger(AboutDialogActivity.class);
 
 
     public void onCreate(Bundle savedInstanceState) {
         super.onCreate(savedInstanceState);
+        // Fix window background overlay in dialog activities
+        getTheme().applyStyle(R.style.DialogOverlay, true);
 
         DialogFragment fragment = new AboutDialog();
         fragment.show(getFragmentManager(), "aboutDialog");
@@ -40,11 +45,16 @@ public class AboutDialogActivity extends BaseActivity {
 
 
         public void initializeWebView(WebView view) {
+            // Match webview style with application theme
+            String textColor = ThemeWrapper.isLightTheme() ? "#212121" : "#fff";
+            String bgColor = ThemeWrapper.isLightTheme() ? "#fff" : "#212121";
 
             String text = loadTextFile(R.raw.about_body);
             String version = PackageHelper.getVersionName(getActivity());
             String changelog = loadTextFile(R.raw.changelog);
-            String css = loadTextFile(R.raw.about_css);
+
+            String css = String.format(Locale.ENGLISH, loadTextFile(R.raw.about_css), bgColor, textColor);
+
             text = String.format(text, version, changelog, css);
 
             WebSettings settings = view.getSettings();

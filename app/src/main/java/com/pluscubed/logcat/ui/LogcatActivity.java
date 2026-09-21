@@ -48,11 +48,15 @@ import androidx.cursoradapter.widget.CursorAdapter;
 import androidx.cursoradapter.widget.SimpleCursorAdapter;
 import androidx.recyclerview.widget.LinearLayoutManager;
 import androidx.recyclerview.widget.RecyclerView;
+import androidx.vectordrawable.graphics.drawable.VectorDrawableCompat;
 
 import com.afollestad.materialdialogs.DialogAction;
 import com.afollestad.materialdialogs.MaterialDialog;
+import com.google.android.material.bottomappbar.BottomAppBar;
+import com.google.android.material.floatingactionbutton.FloatingActionButton;
 import com.google.android.material.snackbar.Snackbar;
 import com.mikhaellopez.circularprogressbar.CircularProgressBar;
+import com.pluscubed.logcat.App;
 import com.pluscubed.logcat.BuildConfig;
 import com.pluscubed.logcat.LogcatRecordingService;
 import com.pluscubed.logcat.R;
@@ -95,9 +99,9 @@ import java.util.Set;
 import static com.pluscubed.logcat.data.LogLineViewHolder.CONTEXT_MENU_COPY_ID;
 import static com.pluscubed.logcat.data.LogLineViewHolder.CONTEXT_MENU_FILTER_ID;
 
+import me.zhanghai.android.fastscroll.FastScrollerBuilder;
 
 public class LogcatActivity extends BaseActivity implements FilterListener, LogLineViewHolder.OnClickListener {
-
     private static final int REQUEST_CODE_SETTINGS = 1;
 
     // how often to check to see if we've gone over the max size
@@ -139,7 +143,10 @@ public class LogcatActivity extends BaseActivity implements FilterListener, LogL
     private String mCurrentlyOpenLog = null;
 
     private Handler mHandler;
-    private MenuItem mSearchViewMenuItem;
+
+    private FloatingActionButton mFab;
+    private BottomAppBar mAppBar;
+    private SearchView searchView;
 
     public static void startChooser(Context context, String subject, String body, SendLogDetails.AttachmentType attachmentType, File attachment) {
 
@@ -208,15 +215,20 @@ public class LogcatActivity extends BaseActivity implements FilterListener, LogL
 
         mHandler = new Handler(Looper.getMainLooper());
 
-        findViewById(R.id.fab).setOnClickListener(v -> DialogHelper.stopRecordingLog(LogcatActivity.this));
+        RecyclerView list = findViewById(R.id.list);
+        list.setLayoutManager(new LinearLayoutManager(this));
+        list.setItemAnimator(null);
 
-        ((RecyclerView) findViewById(R.id.list)).setLayoutManager(new LinearLayoutManager(this));
+        //RecyclerViewFastScroller fastScroller = findViewById(R.id.fastScroller);
+        //fastScroller.attachRecyclerView(list);
 
-        ((RecyclerView) findViewById(R.id.list)).setItemAnimator(null);
-
-        Toolbar toolbar = findViewById(R.id.toolbar_actionbar);
-        toolbar.setOverflowIcon(AppCompatResources.getDrawable(this, R.drawable.ic_more_vert_24dp));
-        setSupportActionBar(toolbar);
+        FastScrollerBuilder fastScrollerBuilder = new FastScrollerBuilder(list);
+        fastScrollerBuilder.disableScrollbarAutoHide();
+        fastScrollerBuilder.build();
+        
+        searchView = findViewById(R.id.search_bar);
+        mFab = findViewById(R.id.fab);
+        mAppBar = findViewById(R.id.bottom_appbar);
 
         mCollapsedMode = !PreferenceHelper.getExpandedByDefaultPreference(this);
 
@@ -231,9 +243,16 @@ public class LogcatActivity extends BaseActivity implements FilterListener, LogL
                 new int[]{android.R.id.text1},
                 CursorAdapter.FLAG_REGISTER_CONTENT_OBSERVER);
 
+        mAppBar.replaceMenu(R.menu.menu_main);
+        flexOptionsMenu(mAppBar.getMenu());
+        mAppBar.setOnMenuItemClickListener(this::onOptionsItemSelected);
+        mAppBar.setOverflowIcon(VectorDrawableCompat.create(getResources(), R.drawable.ic_more_vert, getTheme()));
+
         setUpAdapter();
         updateBackgroundColor();
         runUpdatesIfNecessaryAndShowWelcomeMessage();
+
+        initSearchView();
     }
 
     private void handleShortcuts(String action) {
@@ -296,16 +315,10 @@ public class LogcatActivity extends BaseActivity implements FilterListener, LogL
     }
 
     private void addFiltersToSuggestions() {
-        CatlogDBHelper dbHelper = null;
-        try {
-            dbHelper = new CatlogDBHelper(this);
+        try (CatlogDBHelper dbHelper = new CatlogDBHelper(this)) {
 
             for (FilterItem filterItem : dbHelper.findFilterItems()) {
                 addToAutocompleteSuggestions(filterItem.getText());
-            }
-        } finally {
-            if (dbHelper != null) {
-                dbHelper.close();
             }
         }
 
@@ -367,7 +380,12 @@ public class LogcatActivity extends BaseActivity implements FilterListener, LogL
         }
 
         boolean recordingInProgress = ServiceHelper.checkIfServiceIsRunning(getApplicationContext(), LogcatRecordingService.class);
-        findViewById(R.id.fab).setVisibility(recordingInProgress ? View.VISIBLE : View.GONE);
+        mFab.setImageDrawable(AppCompatResources.getDrawable(this, recordingInProgress ?
+                R.drawable.ic_stop_fab : R.drawable.ic_record_fab));
+        mFab.setOnClickListener(v -> {
+            if (recordingInProgress) DialogHelper.stopRecordingLog(LogcatActivity.this);
+            else showRecordLogDialog();
+        });
     }
 
     private void restartMainLog() {
@@ -436,7 +454,7 @@ public class LogcatActivity extends BaseActivity implements FilterListener, LogL
         if (mTask != null) {
             // do only after current log is depleted, to avoid splicing the streams together
             // (Don't cross the streams!)
-            mTask.unpause();
+            mTask.unPause();
             mTask.setOnFinished(mainLogRunnable);
             mTask.killReader();
             mTask = null;
@@ -492,29 +510,27 @@ public class LogcatActivity extends BaseActivity implements FilterListener, LogL
 
     @Override
     public void onBackPressed() {
-        if (mSearchViewMenuItem != null && mSearchViewMenuItem.isActionViewExpanded()) {
-            mSearchViewMenuItem.collapseActionView();
-        } else if (mCurrentlyOpenLog != null) {
+        if (mCurrentlyOpenLog != null) {
             startMainLog();
         } else {
             super.onBackPressed();
         }
     }
 
-    @Override
-    public boolean onPrepareOptionsMenu(Menu menu) {
+    /**
+     * It is the same method as of onPrepareOptionsMenu(Menu), but with different JVM signature
+     * Since we are replaced {@link androidx.appcompat.widget.Toolbar} with {@link BottomAppBar}/
+     * we need to manually manage options menu items visibility. BottomAppBar does not support
+     * @see androidx.appcompat.app.AppCompatActivity#setSupportActionBar(Toolbar)
+     *
+     * @param menu BottomAppBar menu
+     *
+     * see this method usages to understand
+     */
+    public boolean flexOptionsMenu(Menu menu) {
         invalidateDarkOrLightMenuItems(this, menu);
 
         boolean showingMainLog = (mTask != null);
-
-        MenuItem item = menu.findItem(R.id.menu_expand_all);
-        if (mCollapsedMode) {
-            item.setIcon(R.drawable.ic_expand_more_white_24dp);
-            item.setTitle(R.string.expand_all);
-        } else {
-            item.setIcon(R.drawable.ic_expand_less_white_24dp);
-            item.setTitle(R.string.collapse_all);
-        }
 
         MenuItem clear = menu.findItem(R.id.menu_clear);
         MenuItem pause = menu.findItem(R.id.menu_play_pause);
@@ -553,50 +569,6 @@ public class LogcatActivity extends BaseActivity implements FilterListener, LogL
         MenuInflater inflater = getMenuInflater();
         inflater.inflate(R.menu.menu_main, menu);
 
-        //used to workaround issue where the search text is cleared on expanding the SearchView
-
-        mSearchViewMenuItem = menu.findItem(R.id.menu_search);
-        final SearchView searchView = (SearchView) mSearchViewMenuItem.getActionView();
-        searchView.setOnQueryTextListener(new SearchView.OnQueryTextListener() {
-            @Override
-            public boolean onQueryTextSubmit(String query) {
-                return false;
-            }
-
-            @Override
-            public boolean onQueryTextChange(String newText) {
-                if (!mDynamicallyEnteringSearchText) {
-                    log.d("filtering: %s", newText);
-                    search(newText);
-                    populateSuggestionsAdapter(newText);
-                }
-                mDynamicallyEnteringSearchText = false;
-                return false;
-            }
-        });
-        searchView.setOnSuggestionListener(new SearchView.OnSuggestionListener() {
-            @Override
-            public boolean onSuggestionSelect(int position) {
-                return false;
-            }
-
-            @Override
-            public boolean onSuggestionClick(int position) {
-                List<String> suggestions = getSuggestionsForQuery(mSearchingString);
-                if (!suggestions.isEmpty()) {
-                    searchView.setQuery(suggestions.get(position), true);
-                }
-                return false;
-            }
-        });
-        searchView.setSuggestionsAdapter(mSearchSuggestionsAdapter);
-        if (mSearchingString != null && !mSearchingString.isEmpty()) {
-            mDynamicallyEnteringSearchText = true;
-            mSearchViewMenuItem.expandActionView();
-            searchView.setQuery(mSearchingString, true);
-            searchView.clearFocus();
-        }
-
         return true;
     }
 
@@ -608,6 +580,13 @@ public class LogcatActivity extends BaseActivity implements FilterListener, LogL
                 return true;
             case R.id.menu_expand_all:
                 expandOrCollapseAll(true);
+                if (mCollapsedMode) {
+                    item.setIcon(R.drawable.ic_expand_more_white_24dp);
+                    item.setTitle(R.string.expand_all);
+                } else {
+                    item.setIcon(R.drawable.ic_expand_less_white_24dp);
+                    item.setTitle(R.string.collapse_all);
+                }
                 return true;
             case R.id.menu_clear:
                 if (mLogListAdapter != null) {
@@ -615,7 +594,7 @@ public class LogcatActivity extends BaseActivity implements FilterListener, LogL
                 }
                 Snackbar.make(findViewById(android.R.id.content), R.string.log_cleared, Snackbar.LENGTH_LONG)
                         .setAction(getString(R.string.undo), v -> startMainLog())
-                        .setActionTextColor(ContextCompat.getColor(this, R.color.accent))
+                        .setActionTextColor(App.getColorFromAttr(this, R.attr.colorAccent))
                         .show();
                 return true;
 
@@ -1512,7 +1491,7 @@ public class LogcatActivity extends BaseActivity implements FilterListener, LogL
 
         if (mTask != null) {
             mTask.setOnFinished(() -> openFileTask.execute((Void) null));
-            mTask.unpause();
+            mTask.unPause();
             mTask.killReader();
             mTask = null;
         } else {
@@ -1528,8 +1507,7 @@ public class LogcatActivity extends BaseActivity implements FilterListener, LogL
     }
 
     private void showProgressBar() {
-        ColorScheme colorScheme = PreferenceHelper.getColorScheme(LogcatActivity.this);
-        ((CircularProgressBar) findViewById(R.id.main_progress_bar)).setColor(colorScheme.getSelectedColor(this));
+        ((CircularProgressBar) findViewById(R.id.main_progress_bar)).setColor(App.getColorFromAttr(this, R.attr.colorAccent));
         findViewById(R.id.main_progress_bar).setVisibility(View.VISIBLE);
     }
 
@@ -1545,11 +1523,26 @@ public class LogcatActivity extends BaseActivity implements FilterListener, LogL
 
     private void updateUiForFilename() {
         boolean logFileMode = mCurrentlyOpenLog != null;
+//        if (logFileMode) {
+//            Snackbar snackbar = Snackbar.make(mAppBar, mCurrentlyOpenLog, Snackbar.LENGTH_LONG);
+//            View v = snackbar.getView();
+//            CoordinatorLayout.LayoutParams params = (CoordinatorLayout.LayoutParams) v.getLayoutParams();
+//            params.setMargins(
+//                    params.leftMargin,
+//                    params.topMargin,
+//                    params.rightMargin,
+//                    params.bottomMargin + mAppBar.getHeight()
+//            );
+//            v.setLayoutParams(params);
+//            snackbar.show();
+//        }
 
-        //noinspection ConstantConditions
-        getSupportActionBar().setSubtitle(logFileMode ? mCurrentlyOpenLog : "");
-        getSupportActionBar().setDisplayHomeAsUpEnabled(logFileMode);
-        supportInvalidateOptionsMenu();
+        if (logFileMode){
+            Toast.makeText(this, mCurrentlyOpenLog, Toast.LENGTH_SHORT).show();
+        }
+        searchView.setQueryHint(logFileMode ? mCurrentlyOpenLog : getString(R.string.search_hint));
+        // Hide useless menu items
+        flexOptionsMenu(mAppBar.getMenu());
     }
 
     private void resetFilter() {
@@ -1587,19 +1580,18 @@ public class LogcatActivity extends BaseActivity implements FilterListener, LogL
 
         mLogListAdapter = new LogLineAdapter();
         mLogListAdapter.setClickListener(this);
+        RecyclerView mActivityLogcatList = findViewById(R.id.list);
+        mActivityLogcatList.setAdapter(mLogListAdapter);
 
-        ((RecyclerView) findViewById(R.id.list)).setAdapter(mLogListAdapter);
-
-        ((RecyclerView) findViewById(R.id.list)).addOnScrollListener(new RecyclerView.OnScrollListener() {
+        mActivityLogcatList.addOnScrollListener(new RecyclerView.OnScrollListener() {
             @Override
-            public void onScrollStateChanged(RecyclerView recyclerView, int newState) {
+            public void onScrollStateChanged(@NonNull RecyclerView recyclerView, int newState) {
                 super.onScrollStateChanged(recyclerView, newState);
             }
 
             @Override
-            public void onScrolled(RecyclerView recyclerView, int dx, int dy) {
+            public void onScrolled(@NonNull RecyclerView recyclerView, int dx, int dy) {
                 super.onScrolled(recyclerView, dx, dy);
-
 
                 // update what the first viewable item is
                 final LinearLayoutManager layoutManager = (LinearLayoutManager) recyclerView.getLayoutManager();
@@ -1615,7 +1607,7 @@ public class LogcatActivity extends BaseActivity implements FilterListener, LogL
             }
         });
 
-        ((RecyclerView) findViewById(R.id.list)).setHasFixedSize(true);
+        //((RecyclerView) findViewById(R.id.list)).setHasFixedSize(true);
     }
 
     private void completePartialSelect() {
@@ -1688,11 +1680,11 @@ public class LogcatActivity extends BaseActivity implements FilterListener, LogL
 
         if (currentTask != null) {
             if (currentTask.isPaused()) {
-                currentTask.unpause();
+                currentTask.unPause();
                 item.setIcon(R.drawable.ic_pause_white_24dp);
             } else {
                 currentTask.pause();
-                item.setIcon(R.drawable.ic_play_arrow_white_24dp);
+                item.setIcon(R.drawable.ic_play_arrow);
             }
         }
     }
@@ -1720,7 +1712,6 @@ public class LogcatActivity extends BaseActivity implements FilterListener, LogL
         //TODO:
         //mListView.setCacheColorHint(color);
         //mListView.setDivider(new ColorDrawable(color));
-
     }
 
 
@@ -1860,6 +1851,7 @@ public class LogcatActivity extends BaseActivity implements FilterListener, LogL
             doWhenFinished();
         }
 
+        @SuppressLint("NotifyDataSetChanged")
         @Override
         protected void onProgressUpdate(LogLine... values) {
             super.onProgressUpdate(values);
@@ -1873,7 +1865,6 @@ public class LogcatActivity extends BaseActivity implements FilterListener, LogL
 
                 addToAutocompleteSuggestions(logLine);
             }
-            mLogListAdapter.notifyDataSetChanged();
 
             // how many logs to keep in memory?  this avoids OutOfMemoryErrors
             int maxNumLogLines = PreferenceHelper.getDisplayLimitPreference(LogcatActivity.this);
@@ -1883,8 +1874,10 @@ public class LogcatActivity extends BaseActivity implements FilterListener, LogL
                     && mLogListAdapter.getTrueValues().size() > maxNumLogLines) {
                 int numItemsToRemove = mLogListAdapter.getTrueValues().size() - maxNumLogLines;
                 mLogListAdapter.removeFirst(numItemsToRemove);
-                log.d("truncating %d lines from log list to avoid out of memory errors", numItemsToRemove);
+                log.e("truncating %d lines from log list to avoid out of memory errors", numItemsToRemove);
             }
+
+            mLogListAdapter.notifyDataSetChanged();
 
             if (mAutoscrollToBottom) {
                 scrollToBottom();
@@ -1894,7 +1887,7 @@ public class LogcatActivity extends BaseActivity implements FilterListener, LogL
 
         private void doWhenFinished() {
             if (mPaused) {
-                unpause();
+                unPause();
             }
             if (mOnFinishedRunnable != null) {
                 mOnFinishedRunnable.run();
@@ -1907,7 +1900,7 @@ public class LogcatActivity extends BaseActivity implements FilterListener, LogL
             }
         }
 
-        private void unpause() {
+        private void unPause() {
             synchronized (mLock) {
                 mPaused = false;
                 mLock.notify();
@@ -1922,6 +1915,48 @@ public class LogcatActivity extends BaseActivity implements FilterListener, LogL
             this.mOnFinishedRunnable = onFinished;
         }
 
+    }
 
+    private void initSearchView(){
+        //used to workaround issue where the search text is cleared on expanding the SearchView
+        searchView.setSuggestionsAdapter(mSearchSuggestionsAdapter);
+        searchView.setOnSuggestionListener(new SearchView.OnSuggestionListener() {
+            @Override
+            public boolean onSuggestionSelect(int position) {
+                return false;
+            }
+
+            @Override
+            public boolean onSuggestionClick(int position) {
+                List<String> suggestions = getSuggestionsForQuery(mSearchingString);
+                if (!suggestions.isEmpty()) {
+                    searchView.setQuery(suggestions.get(position), true);
+                }
+                return false;
+            }
+        });
+        searchView.setOnQueryTextListener(new SearchView.OnQueryTextListener() {
+            @Override
+            public boolean onQueryTextSubmit(String query) {
+                return false;
+            }
+
+            @Override
+            public boolean onQueryTextChange(String newText) {
+                if (!mDynamicallyEnteringSearchText) {
+                    log.d("filtering: %s", newText);
+                    search(newText);
+                    populateSuggestionsAdapter(newText);
+                }
+                mDynamicallyEnteringSearchText = false;
+                return false;
+            }
+        });
+        if (mSearchingString != null && !mSearchingString.isEmpty()) {
+            mDynamicallyEnteringSearchText = true;
+            searchView.setIconified(false);
+            searchView.setQuery(mSearchingString, true);
+            searchView.clearFocus();
+        }
     }
 }

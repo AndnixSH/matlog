@@ -139,6 +139,7 @@ public class DialogHelper {
                 .onAny(callback);
 
         MaterialDialog show = builder.show();
+
         initFilenameInputDialog(show);
     }
 
@@ -173,5 +174,4 @@ public class DialogHelper {
 
         return year + "-" + month + "-" + day + "-" + hour + "-" + minute + "-" + second + ".txt";
     }
-
 }
