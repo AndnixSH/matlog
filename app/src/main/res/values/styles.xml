@@ -124,11 +124,20 @@
         surface or vanish entirely. Point colorPrimary at the accent for
         dialogs only, which is also what the old material-dialogs based dialogs
         used for their buttons.
+
+        elevationOverlayEnabled is off for the same reason the surface colour
+        is set at all: the dialog is meant to sit at exactly the log area's
+        background colour, and the overlay that Material paints over elevated
+        surfaces lifted it away from that. #32313c became #504f59 - one 15%
+        white wash over every channel - which is what made these dialogs read
+        as washed-out grey next to the darker log list. Only the dark themes
+        disable it; the light theme keeps Material's usual treatment.
     -->
     <style name="ThemeOverlay.MatLog.MaterialAlertDialog"
         parent="ThemeOverlay.MaterialComponents.MaterialAlertDialog">
         <item name="colorPrimary">@color/accent</item>
         <item name="colorSurface">@color/dark_dialog</item>
+        <item name="elevationOverlayEnabled">false</item>
     </style>
 
     <style name="ThemeOverlay.MatLog.Light.MaterialAlertDialog"
@@ -140,5 +149,6 @@
         parent="ThemeOverlay.MaterialComponents.MaterialAlertDialog">
         <item name="colorPrimary">@color/accent_amoled</item>
         <item name="colorSurface">@color/dark_dialog_amoled</item>
+        <item name="elevationOverlayEnabled">false</item>
     </style>
 </resources>
