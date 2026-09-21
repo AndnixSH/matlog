@@ -77,6 +77,8 @@ import com.pluscubed.logcat.helper.LogStorage;
 import com.pluscubed.logcat.helper.PreferenceHelper;
 import com.pluscubed.logcat.helper.SaveLogHelper;
 import com.pluscubed.logcat.helper.ServiceHelper;
+import com.pluscubed.logcat.helper.ShizukuHelper;
+import com.pluscubed.logcat.helper.SuperUserHelper;
 import com.pluscubed.logcat.helper.UpdateHelper;
 import com.pluscubed.logcat.intents.Intents;
 import com.pluscubed.logcat.reader.LogcatReader;
@@ -327,19 +329,61 @@ public class LogcatActivity extends BaseActivity implements FilterListener, LogL
             dialog.show();
 
             mExecutor.execute(() -> {
+                SuperUserHelper.resolveAccessMode(LogcatActivity.this);
                 UpdateHelper.runUpdatesIfNecessary(LogcatActivity.this);
                 mHandler.post(() -> {
                     if (dialog.isShowing()) {
                         dialog.dismiss();
                     }
-                    startLog();
+                    onAccessModeResolved();
                 });
             });
 
         } else {
-            startLog();
+            // Deciding how to read logs spawns su and may bind Shizuku, so it
+            // has to stay off the main thread.
+            mExecutor.execute(() -> {
+                SuperUserHelper.resolveAccessMode(LogcatActivity.this);
+                mHandler.post(this::onAccessModeResolved);
+            });
         }
 
+    }
+
+    /**
+     * Runs once the privilege question is settled: start reading logs, and if
+     * Shizuku is running but unused, offer it.
+     */
+    private void onAccessModeResolved() {
+        startLog();
+
+        SuperUserHelper.AccessMode mode = SuperUserHelper.getAccessMode();
+        if (mode == SuperUserHelper.AccessMode.ROOT || mode == SuperUserHelper.AccessMode.SHIZUKU) {
+            return;
+        }
+        if (!ShizukuHelper.isAvailable() || ShizukuHelper.hasPermission()) {
+            return;
+        }
+        promptForShizuku();
+    }
+
+    private void promptForShizuku() {
+        new MaterialAlertDialogBuilder(this)
+                .setTitle(R.string.shizuku_title)
+                .setMessage(R.string.shizuku_summary)
+                .setNegativeButton(android.R.string.cancel, null)
+                .setPositiveButton(R.string.shizuku_grant, (dialog, which) ->
+                        ShizukuHelper.requestPermission(granted -> {
+                            if (!granted) {
+                                return;
+                            }
+                            SuperUserHelper.resetAccessMode();
+                            mExecutor.execute(() -> {
+                                SuperUserHelper.resolveAccessMode(LogcatActivity.this);
+                                mHandler.post(LogcatActivity.this::restartMainLog);
+                            });
+                        }))
+                .show();
     }
 
     /**

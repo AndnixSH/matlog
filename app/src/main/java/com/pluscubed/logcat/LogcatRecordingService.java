@@ -26,6 +26,7 @@ import com.pluscubed.logcat.data.SearchCriteria;
 import com.pluscubed.logcat.helper.PreferenceHelper;
 import com.pluscubed.logcat.helper.SaveLogHelper;
 import com.pluscubed.logcat.helper.ServiceHelper;
+import com.pluscubed.logcat.helper.SuperUserHelper;
 import com.pluscubed.logcat.helper.WidgetHelper;
 import com.pluscubed.logcat.reader.LogcatReader;
 import com.pluscubed.logcat.reader.LogcatReaderLoader;
@@ -218,6 +219,10 @@ public class LogcatRecordingService extends Service {
     private void handleIntent(Intent intent) {
 
         log.d("Starting up %s now with intent: %s", LogcatRecordingService.class.getSimpleName(), intent);
+
+        // Make sure we know how we are allowed to read logs. This may block on
+        // the su prompt, which is acceptable here on the worker thread.
+        SuperUserHelper.resolveAccessMode(this);
 
         String filename = intent.getStringExtra(EXTRA_FILENAME);
         String queryText = intent.getStringExtra(EXTRA_QUERY_FILTER);

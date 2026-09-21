@@ -1,7 +1,6 @@
 package com.pluscubed.logcat.reader;
 
 import java.io.IOException;
-import java.util.List;
 
 public interface LogcatReader {
 
@@ -18,8 +17,7 @@ public interface LogcatReader {
      */
     void killQuietly();
 
-    boolean readyToRecord();
 
-    List<Process> getProcesses();
+    boolean readyToRecord();
 
 }

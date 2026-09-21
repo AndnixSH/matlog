@@ -253,5 +253,9 @@
     <string name="theme_auto">Auto (system)</string>
 
     <string name="storage_folder_prompt">Choose a folder for saved logs. A "matlog" folder is created inside it. Documents/matlog is a good choice.</string>
+
+    <string name="shizuku_title">Read logs through Shizuku?</string>
+    <string name="shizuku_summary">Shizuku is running. Letting MatLog use it means logs are read with shell privileges, so you do not need root and Android will not ask you to confirm log access every time you open the app.</string>
+    <string name="shizuku_grant">Grant</string>
     <string name="storage_folder_not_chosen">No folder chosen, so nothing was saved.</string>
 </resources>

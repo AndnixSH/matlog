@@ -16,6 +16,9 @@
 
     <uses-permission android:name="android.permission.POST_NOTIFICATIONS" />
 
+    <!-- Shizuku: read logcat with shell privileges when root is unavailable. -->
+    <uses-permission android:name="moe.shizuku.manager.permission.API_V23" />
+
     <application
         android:allowBackup="true"
         android:icon="@mipmap/ic_launcher"
@@ -109,6 +112,23 @@
                 android:name="android.support.FILE_PROVIDER_PATHS"
                 android:resource="@xml/provider_paths"/>
         </provider>
+
+        <meta-data
+            android:name="moe.shizuku.client.V3_SUPPORT"
+            android:value="true" />
+
+        <!--
+            Shizuku's client provider. It is what delivers the Shizuku binder to
+            the app; the INTERACT_ACROSS_USERS_FULL permission keeps other apps
+            from talking to it.
+        -->
+        <provider
+            android:name="rikka.shizuku.ShizukuProvider"
+            android:authorities="${applicationId}.shizuku"
+            android:multiprocess="false"
+            android:enabled="true"
+            android:exported="true"
+            android:permission="android.permission.INTERACT_ACROSS_USERS_FULL" />
 
         <meta-data
             android:name="google_analytics_adid_collection_enabled"

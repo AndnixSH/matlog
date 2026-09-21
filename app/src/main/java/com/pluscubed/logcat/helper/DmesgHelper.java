@@ -20,7 +20,7 @@ public class DmesgHelper {
     }
 
     public static List<CharSequence> getDmsg() {
-        Process dmesgProcess = null;
+        CommandProcess dmesgProcess = null;
         BufferedReader reader = null;
         List<CharSequence> lines = new ArrayList<CharSequence>();
         try {
@@ -39,7 +39,7 @@ public class DmesgHelper {
             log.e(e, "unexpected exception");
         } finally {
             if (dmesgProcess != null) {
-                RuntimeHelper.destroy(dmesgProcess);
+                dmesgProcess.killQuietly();
                 log.d("destroyed 1 dump logcat process");
             }
             // post-jellybean, we just kill the process, so there's no need

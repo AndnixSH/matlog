@@ -77,15 +77,6 @@ public class MultipleLogcatReader extends AbsLogcatReader {
     }
 
 
-    @Override
-    public List<Process> getProcesses() {
-        List<Process> result = new ArrayList<>();
-        for (ReaderThread thread : readerThreads) {
-            result.addAll(thread.reader.getProcesses());
-        }
-        return result;
-    }
-
     private class ReaderThread extends Thread {
 
         SingleLogcatReader reader;

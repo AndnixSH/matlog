@@ -27,20 +27,130 @@ import java.util.List;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 
-/*
- * Starting in JellyBean, the READ_LOGS permission must be requested as super user
- * or else you can only read your own app's logs.
- * 
- * This class contains helper methods to correct the problem.
+/**
+ * Works out how this app is allowed to read the system log, and holds the
+ * helpers for doing it as root.
+ *
+ * <p>Reading other apps' logs needs one of three things, and they are tried in
+ * this order:
+ * <ol>
+ *   <li><b>root</b> - logcat runs through {@code su}; no prompt from the system.</li>
+ *   <li><b>Shizuku</b> - logcat runs with Shizuku's shell privileges; also no
+ *       system prompt, and unlike root it needs no reboot to set up.</li>
+ *   <li><b>{@code READ_LOGS}</b> - the permission granted over adb. This is the
+ *       last resort: Android additionally asks the user for consent each session
+ *       when an app holds it, so it is the least pleasant of the three.</li>
+ * </ol>
  */
 public class SuperUserHelper {
 
+    /**
+     * How we ended up reading logs. Decided once per process.
+     */
+    public enum AccessMode {
+        ROOT,
+        SHIZUKU,
+        READ_LOGS,
+        NONE
+    }
+
     private static final Pattern PID_PATTERN = Pattern.compile("\\d+");
     private static final Pattern SPACES_PATTERN = Pattern.compile("\\s+");
+
     private static UtilLogger log = new UtilLogger(SuperUserHelper.class);
+
+    private static volatile AccessMode accessMode;
     private static boolean failedToObtainRoot = false;
 
-    private static void showWarningDialog(final Context context) {
+    /**
+     * The resolved mode, or {@link AccessMode#READ_LOGS} as a neutral default
+     * until {@link #resolveAccessMode} has run.
+     */
+    public static AccessMode getAccessMode() {
+        AccessMode mode = accessMode;
+        return mode != null ? mode : AccessMode.READ_LOGS;
+    }
+
+    public static boolean isResolved() {
+        return accessMode != null;
+    }
+
+    /**
+     * Picks how we will read logs and remembers it for the process.
+     *
+     * <p>This spawns processes and can block for several seconds on the su
+     * prompt, so it must never run on the main thread.
+     */
+    public static synchronized AccessMode resolveAccessMode(Context context) {
+        if (accessMode != null) {
+            return accessMode;
+        }
+
+        if (tryRoot(context)) {
+            accessMode = AccessMode.ROOT;
+            log.d("reading logs as root");
+        } else if (ShizukuHelper.isAvailable() && ShizukuHelper.hasPermission()) {
+            accessMode = AccessMode.SHIZUKU;
+            log.d("reading logs through Shizuku (uid %d)", ShizukuHelper.getUid());
+        } else if (haveReadLogsPermission(context)) {
+            accessMode = AccessMode.READ_LOGS;
+            log.d("reading logs with the READ_LOGS permission");
+        } else {
+            accessMode = AccessMode.NONE;
+            log.d("no way to read other apps' logs");
+        }
+
+        return accessMode;
+    }
+
+    /** Allows a later resolve attempt, e.g. after the user grants Shizuku. */
+    public static synchronized void resetAccessMode() {
+        accessMode = null;
+    }
+
+    /**
+     * Asks su for root and waits for the answer. The user may well be looking at
+     * a superuser prompt while this is blocked.
+     */
+    private static boolean tryRoot(Context context) {
+        Process process = null;
+        try {
+            process = Runtime.getRuntime().exec("su");
+
+            DataOutputStream outputStream = new DataOutputStream(process.getOutputStream());
+            outputStream.writeBytes("echo hello\n");
+            outputStream.writeBytes("exit\n");
+            outputStream.flush();
+
+            process.waitFor();
+
+            if (process.exitValue() == 0) {
+                return true;
+            }
+        } catch (IOException | InterruptedException e) {
+            log.d("no root: %s", e);
+            if (e instanceof InterruptedException) {
+                Thread.currentThread().interrupt();
+            }
+        } finally {
+            if (process != null) {
+                process.destroy();
+            }
+        }
+
+        failedToObtainRoot = true;
+        return false;
+    }
+
+    public static boolean isFailedToObtainRoot() {
+        return failedToObtainRoot;
+    }
+
+    /**
+     * Tells the user how to grant log access when none of the three routes
+     * worked.
+     */
+    public static void showWarningDialog(final Context context) {
         Handler handler = new Handler(Looper.getMainLooper());
 
         handler.post(() -> {
@@ -66,7 +176,7 @@ public class SuperUserHelper {
         });
     }
 
-    private static boolean haveReadLogsPermission(Context context) {
+    public static boolean haveReadLogsPermission(Context context) {
         return context.getPackageManager().checkPermission("android.permission.READ_LOGS", context.getPackageName()) == PackageManager.PERMISSION_GRANTED;
     }
 
@@ -150,53 +260,9 @@ public class SuperUserHelper {
                     suProcess.waitFor();
                 } catch (InterruptedException e) {
                     log.e(e, "cannot kill process " + pid);
+                    Thread.currentThread().interrupt();
                 }
             }
         }
-    }
-
-    public static void requestRoot(final Context context) {
-        // Don't request root when read logs permission is already granted
-        if(haveReadLogsPermission(context)) {
-            failedToObtainRoot = true;
-            return;
-        }
-
-        Handler handler = new Handler(Looper.getMainLooper());
-        Runnable toastRunnable = () -> Toast.makeText(context, R.string.toast_request_root, Toast.LENGTH_LONG).show();
-        handler.postDelayed(toastRunnable, 200);
-
-        Process process = null;
-        try {
-            // Preform su to get root privileges
-            process = Runtime.getRuntime().exec("su");
-
-            // confirm that we have root
-            DataOutputStream outputStream = new DataOutputStream(process.getOutputStream());
-            outputStream.writeBytes("echo hello\n");
-
-            // Close the terminal
-            outputStream.writeBytes("exit\n");
-            outputStream.flush();
-
-            process.waitFor();
-            if (process.exitValue() != 0) {
-                showWarningDialog(context);
-                failedToObtainRoot = true;
-            } else {
-                // success
-                PreferenceHelper.setJellybeanRootRan(context);
-            }
-
-        } catch (IOException | InterruptedException e) {
-            log.w(e, "Cannot obtain root");
-            showWarningDialog(context);
-            failedToObtainRoot = true;
-        }
-        handler.removeCallbacks(toastRunnable);
-    }
-
-    public static boolean isFailedToObtainRoot() {
-        return failedToObtainRoot;
     }
 }

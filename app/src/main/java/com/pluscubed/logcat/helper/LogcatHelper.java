@@ -17,7 +17,7 @@ public class LogcatHelper {
 
     private static UtilLogger log = new UtilLogger(LogcatHelper.class);
 
-    public static Process getLogcatProcess(String buffer) throws IOException {
+    public static CommandProcess getLogcatProcess(String buffer) throws IOException {
 
         List<String> args = getLogcatArgs(buffer);
 
@@ -38,7 +38,7 @@ public class LogcatHelper {
     }
 
     public static String getLastLogLine(String buffer) {
-        Process dumpLogcatProcess = null;
+        CommandProcess dumpLogcatProcess = null;
         BufferedReader reader = null;
         String result = null;
         try {
@@ -58,7 +58,7 @@ public class LogcatHelper {
             log.e(e, "unexpected exception");
         } finally {
             if (dumpLogcatProcess != null) {
-                RuntimeHelper.destroy(dumpLogcatProcess);
+                dumpLogcatProcess.killQuietly();
                 log.d("destroyed 1 dump logcat process");
             }
             // post-jellybean, we just kill the process, so there's no need

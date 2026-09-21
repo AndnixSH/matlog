@@ -2,22 +2,20 @@ package com.pluscubed.logcat.reader;
 
 import android.text.TextUtils;
 
+import com.pluscubed.logcat.helper.CommandProcess;
 import com.pluscubed.logcat.helper.LogcatHelper;
-import com.pluscubed.logcat.helper.RuntimeHelper;
 import com.pluscubed.logcat.helper.VersionHelper;
 import com.pluscubed.logcat.util.UtilLogger;
 
 import java.io.BufferedReader;
 import java.io.IOException;
 import java.io.InputStreamReader;
-import java.util.Collections;
-import java.util.List;
 
 public class SingleLogcatReader extends AbsLogcatReader {
 
     private static UtilLogger log = new UtilLogger(SingleLogcatReader.class);
 
-    private Process logcatProcess;
+    private CommandProcess logcatProcess;
     private BufferedReader bufferedReader;
     private String logBuffer;
     private String lastLine;
@@ -46,7 +44,7 @@ public class SingleLogcatReader extends AbsLogcatReader {
     @Override
     public void killQuietly() {
         if (logcatProcess != null) {
-            RuntimeHelper.destroy(logcatProcess);
+            logcatProcess.killQuietly();
             log.d("killed 1 logcat process");
         }
 
@@ -102,8 +100,4 @@ public class SingleLogcatReader extends AbsLogcatReader {
         return recordingMode && lastLine == null;
     }
 
-    @Override
-    public List<Process> getProcesses() {
-        return Collections.singletonList(logcatProcess);
-    }
 }

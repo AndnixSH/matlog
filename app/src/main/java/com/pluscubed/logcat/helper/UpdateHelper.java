@@ -58,13 +58,11 @@ public class UpdateHelper {
         // migration is gone: neither path is reachable from an app on API 30+,
         // and saved logs now live in a folder the user grants through SAF.
 
-        // update to request superuser READ_LOGS permission on JellyBean
-        Update3(context -> {
-
-            boolean isJellyBean = VersionHelper.getVersionSdkIntCompat() >= VersionHelper.VERSION_JELLYBEAN;
-
-            return isJellyBean && !PreferenceHelper.getJellybeanRootRan(context);
-        }, SuperUserHelper::requestRoot),;
+        // The old "ask for root once" update is gone too: choosing how to read
+        // logs is now SuperUserHelper.resolveAccessMode(), run on every start
+        // rather than latched behind a preference, so it can fall through
+        // root -> Shizuku -> READ_LOGS.
+        ;
 
         private Function<Context, Boolean> isNecessary;
         private Callback<Context> runUpdate;
