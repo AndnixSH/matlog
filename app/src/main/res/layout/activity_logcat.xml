@@ -76,11 +76,16 @@
         app:paddingBottomSystemWindowInsets="false"
         app:layout_scrollFlags="scroll|enterAlways"/>
 
+    <!--
+        No android:layout_gravity here on purpose. BottomAppBar only seats an
+        anchored FAB into its cradle when the FAB's gravity is NO_GRAVITY; give
+        it one and the cradle is still cut but the button is laid out by plain
+        anchor+gravity instead, landing half a button-height below the notch.
+    -->
     <com.google.android.material.floatingactionbutton.FloatingActionButton
         android:id="@+id/fab"
         android:layout_width="wrap_content"
         android:layout_height="wrap_content"
-        android:layout_gravity="bottom|center_horizontal"
         android:src="@drawable/ic_stop_white_24dp"
         android:tint="@android:color/white"
         app:backgroundTint="#F44336"
