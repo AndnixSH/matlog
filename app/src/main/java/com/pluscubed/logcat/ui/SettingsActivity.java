@@ -1,23 +1,22 @@
 package com.pluscubed.logcat.ui;
 
-import android.app.Fragment;
-import android.app.FragmentManager;
 import android.content.Intent;
 import android.os.Bundle;
-import android.preference.EditTextPreference;
-import android.preference.ListPreference;
-import android.preference.Preference;
-import android.preference.Preference.OnPreferenceChangeListener;
-import android.preference.PreferenceFragment;
-import android.preference.SwitchPreference;
 import android.text.TextUtils;
-import android.view.KeyEvent;
 import android.view.MenuItem;
 import android.widget.Toast;
 
+import androidx.activity.OnBackPressedCallback;
 import androidx.appcompat.content.res.AppCompatResources;
 import androidx.appcompat.widget.Toolbar;
+import androidx.fragment.app.Fragment;
+import androidx.fragment.app.FragmentManager;
 import androidx.localbroadcastmanager.content.LocalBroadcastManager;
+import androidx.preference.EditTextPreference;
+import androidx.preference.ListPreference;
+import androidx.preference.Preference;
+import androidx.preference.PreferenceFragmentCompat;
+import androidx.preference.SwitchPreferenceCompat;
 
 import com.pluscubed.logcat.R;
 import com.pluscubed.logcat.data.LogLine;
@@ -41,7 +40,7 @@ public class SettingsActivity extends BaseActivity {
         toolbar.setOverflowIcon(AppCompatResources.getDrawable(this, R.drawable.ic_more_vert));
         setSupportActionBar(toolbar);
 
-        FragmentManager fm = getFragmentManager();
+        FragmentManager fm = getSupportFragmentManager();
         Fragment f = fm.findFragmentById(R.id.content);
         if (f == null) {
             fm.beginTransaction()
@@ -52,25 +51,25 @@ public class SettingsActivity extends BaseActivity {
         //noinspection ConstantConditions
         getSupportActionBar().setDisplayHomeAsUpEnabled(true);
         setTitle(R.string.settings);
+
+        // Predictive back (default from targetSdk 36) no longer routes through
+        // onBackPressed/onKeyDown, so the finish-with-result has to live in an
+        // OnBackPressedCallback.
+        getOnBackPressedDispatcher().addCallback(this, new OnBackPressedCallback(true) {
+            @Override
+            public void handleOnBackPressed() {
+                setResultAndFinish();
+            }
+        });
     }
 
     private void setResultAndFinish() {
         Intent data = new Intent();
-        FragmentManager fm = getFragmentManager();
+        FragmentManager fm = getSupportFragmentManager();
         SettingsFragment f = (SettingsFragment) fm.findFragmentById(R.id.content);
-        data.putExtra("bufferChanged", f.getBufferChanged());
+        data.putExtra("bufferChanged", f != null && f.getBufferChanged());
         setResult(RESULT_OK, data);
         finish();
-    }
-
-    @Override
-    public boolean onKeyDown(int keyCode, KeyEvent event) {
-        if (keyCode == KeyEvent.KEYCODE_BACK && event.getRepeatCount() == 0) {
-            // set result and finish
-            setResultAndFinish();
-            return true;
-        }
-        return super.onKeyDown(keyCode, event);
     }
 
     @Override
@@ -84,7 +83,7 @@ public class SettingsActivity extends BaseActivity {
         return super.onOptionsItemSelected(item);
     }
 
-    public static class SettingsFragment extends PreferenceFragment implements OnPreferenceChangeListener {
+    public static class SettingsFragment extends PreferenceFragmentCompat implements Preference.OnPreferenceChangeListener {
 
         private static final int MAX_LOG_LINE_PERIOD = 1000;
         private static final int MIN_LOG_LINE_PERIOD = 1;
@@ -96,14 +95,13 @@ public class SettingsActivity extends BaseActivity {
         private MultipleChoicePreference bufferPreference;
         private Preference mThemePreference;
         private Preference mAboutPreference;
-        private SwitchPreference scrubberPreference;
+        private SwitchPreferenceCompat scrubberPreference;
 
         private boolean bufferChanged = false;
 
         @Override
-        public void onCreate(Bundle savedInstanceState) {
-            super.onCreate(savedInstanceState);
-            addPreferencesFromResource(R.xml.settings);
+        public void onCreatePreferences(Bundle savedInstanceState, String rootKey) {
+            setPreferencesFromResource(R.xml.settings, rootKey);
             setUpPreferences();
         }
 
@@ -116,7 +114,7 @@ public class SettingsActivity extends BaseActivity {
             setCurrentValue("ui.theme");
             setCurrentValue("theme");
 
-            displayLimitPreference = (EditTextPreference) findPreference(getString(R.string.pref_display_limit));
+            displayLimitPreference = findPreference(getString(R.string.pref_display_limit));
 
             int displayLimitValue = PreferenceHelper.getDisplayLimitPreference(getActivity());
 
@@ -124,11 +122,11 @@ public class SettingsActivity extends BaseActivity {
                     displayLimitValue, getString(R.string.pref_display_limit_default)));
             displayLimitPreference.setOnPreferenceChangeListener(this);
 
-            filterPatternPreference = (EditTextPreference) findPreference(getString(R.string.pref_filter_pattern));
+            filterPatternPreference = findPreference(getString(R.string.pref_filter_pattern));
             filterPatternPreference.setSummary(getString(R.string.pref_filter_pattern_summary));
             filterPatternPreference.setOnPreferenceChangeListener(this);
 
-            logLinePeriodPreference = (EditTextPreference) findPreference(getString(R.string.pref_log_line_period));
+            logLinePeriodPreference = findPreference(getString(R.string.pref_log_line_period));
 
             int logLinePrefValue = PreferenceHelper.getLogLinePeriodPreference(getActivity());
 
@@ -137,11 +135,11 @@ public class SettingsActivity extends BaseActivity {
 
             logLinePeriodPreference.setOnPreferenceChangeListener(this);
 
-            textSizePreference = (ListPreference) findPreference(getString(R.string.pref_text_size));
+            textSizePreference = findPreference(getString(R.string.pref_text_size));
             textSizePreference.setSummary(textSizePreference.getEntry());
             textSizePreference.setOnPreferenceChangeListener(this);
 
-            defaultLevelPreference = (ListPreference) findPreference(getString(R.string.pref_default_log_level));
+            defaultLevelPreference = findPreference(getString(R.string.pref_default_log_level));
             defaultLevelPreference.setOnPreferenceChangeListener(this);
             setDefaultLevelPreferenceSummary(defaultLevelPreference.getEntry());
 
@@ -150,7 +148,7 @@ public class SettingsActivity extends BaseActivity {
 
             findPreference("ui.accent").setOnPreferenceChangeListener(this);
 
-            bufferPreference = (MultipleChoicePreference) findPreference(getString(R.string.pref_buffer));
+            bufferPreference = findPreference(getString(R.string.pref_buffer));
             bufferPreference.setOnPreferenceChangeListener(this);
             setBufferPreferenceSummary(bufferPreference.getValue());
 
@@ -165,7 +163,7 @@ public class SettingsActivity extends BaseActivity {
             });
             mAboutPreference.setSummary(getString(R.string.version, PackageHelper.getVersionName(getActivity())));
 
-            scrubberPreference = (SwitchPreference) getPreferenceScreen().findPreference("scrubber");
+            scrubberPreference = findPreference("scrubber");
             scrubberPreference.setOnPreferenceChangeListener((preference, newValue) -> {
                 LogLine.isScrubberEnabled = (boolean) newValue;
                 return true;
@@ -297,8 +295,10 @@ public class SettingsActivity extends BaseActivity {
         }
 
         private void setCurrentValue(String key){
-            ListPreference preference = (ListPreference) findPreference(key);
-            preference.setSummary(preference.getEntry());
+            ListPreference preference = findPreference(key);
+            if (preference != null) {
+                preference.setSummary(preference.getEntry());
+            }
         }
     }
 }

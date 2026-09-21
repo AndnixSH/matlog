@@ -1,11 +1,11 @@
 package com.pluscubed.logcat.widget;
 
-import android.app.AlertDialog.Builder;
 import android.content.Context;
-import android.content.DialogInterface;
-import android.preference.ListPreference;
 import android.util.AttributeSet;
 
+import androidx.preference.ListPreference;
+
+import com.google.android.material.dialog.MaterialAlertDialogBuilder;
 import com.pluscubed.logcat.util.StringUtil;
 
 import java.util.Arrays;
@@ -20,7 +20,14 @@ import java.util.Set;
 public class MultipleChoicePreference extends ListPreference {
 
     public static final String DELIMITER = ",";
-    boolean[] checkedDialogEntryIndexes;
+
+    public MultipleChoicePreference(Context context, AttributeSet attrs, int defStyleAttr, int defStyleRes) {
+        super(context, attrs, defStyleAttr, defStyleRes);
+    }
+
+    public MultipleChoicePreference(Context context, AttributeSet attrs, int defStyleAttr) {
+        super(context, attrs, defStyleAttr);
+    }
 
     public MultipleChoicePreference(Context context, AttributeSet attrs) {
         super(context, attrs);
@@ -30,44 +37,41 @@ public class MultipleChoicePreference extends ListPreference {
         super(context);
     }
 
+    /**
+     * Show our own multi-choice dialog rather than the single-choice one that
+     * ListPreference would open through the preference dialog fragment. Taking
+     * over here keeps the whole thing on public API and leaves the comma
+     * separated storage format untouched.
+     */
     @Override
-    protected void onPrepareDialogBuilder(Builder builder) {
+    public void onClick() {
+        CharSequence[] entryValues = getEntryValues();
+        CharSequence[] entries = getEntries();
+        if (entryValues == null || entries == null) {
+            return;
+        }
 
         // convert comma-separated list to boolean array
-
-        String value = getValue();
+        String value = StringUtil.nullToEmpty(getValue());
         Set<String> commaSeparated = new HashSet<>(Arrays.asList(StringUtil.split(value, DELIMITER)));
 
-        CharSequence[] entryValues = getEntryValues();
         final boolean[] checked = new boolean[entryValues.length];
         for (int i = 0; i < entryValues.length; i++) {
             checked[i] = commaSeparated.contains(entryValues[i]);
         }
 
-        builder.setMultiChoiceItems(getEntries(), checked, (dialog, which, isChecked) -> checked[which] = isChecked);
-        builder.setPositiveButton(android.R.string.ok, (dialog, which) -> {
-
-            checkedDialogEntryIndexes = checked;
-
-            /*
-             * Clicking on an item simulates the positive button
-             * click, and dismisses the dialog.
-             */
-            MultipleChoicePreference.this.onClick(dialog, DialogInterface.BUTTON_POSITIVE);
-            dialog.dismiss();
-
-        });
-    }
-
-    @Override
-    protected void onDialogClosed(boolean positiveResult) {
-
-        if (positiveResult && checkedDialogEntryIndexes != null) {
-            String value = createValueAsString(checkedDialogEntryIndexes);
-            if (callChangeListener(value)) {
-                setValue(value);
-            }
-        }
+        new MaterialAlertDialogBuilder(getContext())
+                .setTitle(getTitle())
+                .setMultiChoiceItems(entries, checked,
+                        (dialog, which, isChecked) -> checked[which] = isChecked)
+                .setNegativeButton(android.R.string.cancel, null)
+                .setPositiveButton(android.R.string.ok, (dialog, which) -> {
+                    String newValue = createValueAsString(checked);
+                    if (callChangeListener(newValue)) {
+                        setValue(newValue);
+                    }
+                })
+                .show();
     }
 
     private String createValueAsString(boolean[] checked) {

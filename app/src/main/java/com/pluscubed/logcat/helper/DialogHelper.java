@@ -2,6 +2,7 @@ package com.pluscubed.logcat.helper;
 
 import android.annotation.SuppressLint;
 import android.content.Context;
+import android.content.DialogInterface;
 import android.os.Handler;
 import android.os.Looper;
 import android.text.InputType;
@@ -13,8 +14,14 @@ import android.widget.ArrayAdapter;
 import android.widget.AutoCompleteTextView;
 import android.widget.EditText;
 import android.widget.Spinner;
+import android.widget.TextView;
 
-import com.afollestad.materialdialogs.MaterialDialog;
+import androidx.annotation.NonNull;
+import androidx.annotation.Nullable;
+import androidx.annotation.StringRes;
+import androidx.appcompat.app.AlertDialog;
+
+import com.google.android.material.dialog.MaterialAlertDialogBuilder;
 import com.pluscubed.logcat.R;
 import com.pluscubed.logcat.data.FilterQueryWithLevel;
 import com.pluscubed.logcat.data.SortedFilterArrayAdapter;
@@ -29,16 +36,26 @@ import java.util.List;
 
 public class DialogHelper {
 
+    /**
+     * Receives the text a user typed into an input dialog once they confirm it.
+     */
+    public interface InputCallback {
+        void onInput(@NonNull CharSequence input);
+    }
+
     public static void startRecordingWithProgressDialog(final String filename,
                                                         final String filterQuery, final String logLevel, final Runnable onPostExecute, final Context context) {
 
-        final MaterialDialog progressDialog = new MaterialDialog.Builder(context)
-                .title(R.string.dialog_please_wait)
-                .content(R.string.dialog_initializing_recorder)
-                .progress(true, -1)
-                .build();
+        LayoutInflater inflater = LayoutInflater.from(context);
+        @SuppressLint("InflateParams") View view = inflater.inflate(R.layout.dialog_progress, null, false);
+        ((TextView) view.findViewById(R.id.message)).setText(R.string.dialog_initializing_recorder);
 
-        progressDialog.setCancelable(false);
+        final AlertDialog progressDialog = new MaterialAlertDialogBuilder(context)
+                .setTitle(R.string.dialog_please_wait)
+                .setView(view)
+                .setCancelable(false)
+                .create();
+
         progressDialog.setCanceledOnTouchOutside(false);
 
         final Handler handler = new Handler(Looper.getMainLooper());
@@ -102,13 +119,11 @@ public class DialogHelper {
         spinner.setSelection(ArrayUtil.indexOf(context.getResources().getStringArray(R.array.log_levels_values),
                 logLevelText));
 
-        // create alertdialog for the "Filter..." button
-        new MaterialDialog.Builder(context)
-                .title(R.string.title_filter)
-                .customView(filterView, true)
-                .negativeText(android.R.string.cancel)
-                .positiveText(android.R.string.ok)
-                .onPositive((dialog, which) -> {
+        new MaterialAlertDialogBuilder(context)
+                .setTitle(R.string.title_filter)
+                .setView(filterView)
+                .setNegativeButton(android.R.string.cancel, null)
+                .setPositiveButton(android.R.string.ok, (dialog, which) -> {
                     int logLevelIdx = spinner.getSelectedItemPosition();
                     String[] logLevelValues = context.getResources().getStringArray(R.array.log_levels_values);
                     String logLevelValue = logLevelValues[logLevelIdx];
@@ -126,35 +141,47 @@ public class DialogHelper {
     }
 
 
-    public static void showFilenameSuggestingDialog(final Context context,
-                                                    final MaterialDialog.SingleButtonCallback callback, final MaterialDialog.InputCallback inputCallback, int titleResId) {
+    /**
+     * Shows an "enter a filename" dialog. {@code onNegative} may be null if the
+     * caller does not care about cancellation.
+     */
+    public static AlertDialog showFilenameSuggestingDialog(final Context context,
+                                                          @Nullable final DialogInterface.OnClickListener onNegative,
+                                                          final InputCallback inputCallback, @StringRes int titleResId) {
 
+        LayoutInflater inflater = LayoutInflater.from(context);
+        @SuppressLint("InflateParams") View view = inflater.inflate(R.layout.dialog_edit_text, null, false);
+        final EditText editText = view.findViewById(R.id.edit_text);
 
-        MaterialDialog.Builder builder = new MaterialDialog.Builder(context);
-        builder.title(titleResId)
-                .negativeText(android.R.string.cancel)
-                .positiveText(android.R.string.ok)
-                .content(R.string.enter_filename)
-                .input("", "", inputCallback)
-                .onAny(callback);
+        // The hint on the EditText carries the "enter filename" prompt; setting a
+        // message here as well would be discarded because a custom view wins.
+        AlertDialog dialog = new MaterialAlertDialogBuilder(context)
+                .setTitle(titleResId)
+                .setView(view)
+                .setNegativeButton(android.R.string.cancel, onNegative)
+                .setPositiveButton(android.R.string.ok, (d, which) -> inputCallback.onInput(editText.getText()))
+                .create();
 
-        MaterialDialog show = builder.show();
-
-        initFilenameInputDialog(show);
+        dialog.show();
+        initFilenameInputDialog(editText);
+        return dialog;
     }
 
-    public static void initFilenameInputDialog(MaterialDialog show) {
-        final EditText editText = show.getInputEditText();
+    public static void initFilenameInputDialog(EditText editText) {
+        initFilenameInputDialog(editText, createLogFilename());
+    }
+
+    public static void initFilenameInputDialog(EditText editText, CharSequence initialFilename) {
         editText.setSingleLine();
         editText.setInputType(InputType.TYPE_TEXT_VARIATION_FILTER);
         editText.setImeOptions(EditorInfo.IME_ACTION_DONE);
 
-        // create an initial filename to suggest to the user
-        String filename = createLogFilename();
-        editText.setText(filename);
+        editText.setText(initialFilename);
 
         // highlight everything but the .txt at the end
-        editText.setSelection(0, filename.length() - 4);
+        if (initialFilename != null && initialFilename.length() > 4) {
+            editText.setSelection(0, initialFilename.length() - 4);
+        }
     }
 
     public static String createLogFilename() {

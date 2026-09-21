@@ -3,7 +3,7 @@ package com.pluscubed.logcat.helper;
 import android.content.Context;
 import android.content.SharedPreferences;
 import android.content.SharedPreferences.Editor;
-import android.preference.PreferenceManager;
+import androidx.preference.PreferenceManager;
 
 import com.pluscubed.logcat.R;
 import com.pluscubed.logcat.util.Callback;
@@ -54,12 +54,9 @@ public class UpdateHelper {
             }
         }),
 
-        // update to move saved logs from /sdcard/catlog_saved_logs to /sdcard/catlog/saved_logs
-        Update2(context -> SaveLogHelper.checkIfSdCardExists() && SaveLogHelper.legacySavedLogsDirExists(), context -> {
-            if (SaveLogHelper.checkIfSdCardExists()) {
-                SaveLogHelper.moveLogsFromLegacyDirIfNecessary();
-            }
-        }),
+        // The old "move /sdcard/catlog_saved_logs to /sdcard/matlog/saved_logs"
+        // migration is gone: neither path is reachable from an app on API 30+,
+        // and saved logs now live in a folder the user grants through SAF.
 
         // update to request superuser READ_LOGS permission on JellyBean
         Update3(context -> {

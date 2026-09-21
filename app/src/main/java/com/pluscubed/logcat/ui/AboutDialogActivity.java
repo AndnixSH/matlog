@@ -1,13 +1,14 @@
 package com.pluscubed.logcat.ui;
 
 import android.app.Dialog;
-import android.app.DialogFragment;
 import android.content.DialogInterface;
 import android.os.Bundle;
 import android.webkit.WebSettings;
 import android.webkit.WebView;
 
-import com.afollestad.materialdialogs.MaterialDialog;
+import androidx.fragment.app.DialogFragment;
+
+import com.google.android.material.dialog.MaterialAlertDialogBuilder;
 import com.pluscubed.logcat.R;
 import com.pluscubed.logcat.helper.PackageHelper;
 import com.pluscubed.logcat.util.ThemeWrapper;
@@ -31,7 +32,7 @@ public class AboutDialogActivity extends BaseActivity {
         getTheme().applyStyle(R.style.DialogOverlay, true);
 
         DialogFragment fragment = new AboutDialog();
-        fragment.show(getFragmentManager(), "aboutDialog");
+        fragment.show(getSupportFragmentManager(), "aboutDialog");
 
     }
 
@@ -88,12 +89,12 @@ public class AboutDialogActivity extends BaseActivity {
             view.setWebViewClient(new AboutWebClient());*/
             initializeWebView(view);
 
-            return new MaterialDialog.Builder(getActivity())
-                    .customView(view, false)
-                    .title(R.string.about_matlog)
-                    .iconRes(R.mipmap.ic_launcher)
-                    .positiveText(android.R.string.ok)
-                    .build();
+            return new MaterialAlertDialogBuilder(getActivity())
+                    .setView(view)
+                    .setTitle(R.string.about_matlog)
+                    .setIcon(R.mipmap.ic_launcher)
+                    .setPositiveButton(android.R.string.ok, null)
+                    .create();
         }
 
 

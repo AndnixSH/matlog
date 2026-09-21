@@ -6,10 +6,12 @@ import android.content.Context;
 import android.content.pm.PackageManager;
 import android.os.Handler;
 import android.os.Looper;
-import android.text.Html;
 import android.widget.Toast;
 
-import com.afollestad.materialdialogs.MaterialDialog;
+import androidx.appcompat.app.AlertDialog;
+import androidx.core.text.HtmlCompat;
+
+import com.google.android.material.dialog.MaterialAlertDialogBuilder;
 import com.pluscubed.logcat.BuildConfig;
 import com.pluscubed.logcat.R;
 import com.pluscubed.logcat.util.UtilLogger;
@@ -43,19 +45,24 @@ public class SuperUserHelper {
 
         handler.post(() -> {
             final String command = String.format("adb shell pm grant %s android.permission.READ_LOGS", BuildConfig.APPLICATION_ID);
-            new MaterialDialog.Builder(context)
-                    .title(R.string.no_logs_warning_title)
-                    .content(Html.fromHtml(context.getString(R.string.no_logs_warning, context.getString(R.string.app_name), command)))
-                    .positiveText(android.R.string.ok)
-                    .neutralText(R.string.copy_command)
-                    .onPositive((dialog, which) -> dialog.dismiss())
-                    .onNeutral((dialog, which) -> {
-                        ((ClipboardManager) context.getSystemService(Context.CLIPBOARD_SERVICE))
-                                .setPrimaryClip(ClipData.newPlainText(context.getString(R.string.adb_command), command));
-                        Toast.makeText(context, R.string.copied_to_clipboard, Toast.LENGTH_SHORT).show();
-                    })
-                    .autoDismiss(false)
-                    .show();
+
+            AlertDialog dialog = new MaterialAlertDialogBuilder(context)
+                    .setTitle(R.string.no_logs_warning_title)
+                    .setMessage(HtmlCompat.fromHtml(context.getString(R.string.no_logs_warning,
+                            context.getString(R.string.app_name), command), HtmlCompat.FROM_HTML_MODE_LEGACY))
+                    .setPositiveButton(android.R.string.ok, null)
+                    .setNeutralButton(R.string.copy_command, null)
+                    .create();
+
+            dialog.show();
+
+            // Copy without dismissing, so the user can still read the command
+            // (the old material-dialogs dialog used autoDismiss(false)).
+            dialog.getButton(AlertDialog.BUTTON_NEUTRAL).setOnClickListener(v -> {
+                ((ClipboardManager) context.getSystemService(Context.CLIPBOARD_SERVICE))
+                        .setPrimaryClip(ClipData.newPlainText(context.getString(R.string.adb_command), command));
+                Toast.makeText(context, R.string.copied_to_clipboard, Toast.LENGTH_SHORT).show();
+            });
         });
     }
 

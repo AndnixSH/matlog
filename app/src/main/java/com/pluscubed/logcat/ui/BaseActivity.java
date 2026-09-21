@@ -8,9 +8,10 @@ import android.content.Intent;
 import android.content.IntentFilter;
 import android.os.Build;
 import android.os.Bundle;
-import android.view.View;
 
 import androidx.appcompat.app.AppCompatActivity;
+import androidx.core.view.WindowCompat;
+import androidx.core.view.WindowInsetsControllerCompat;
 import androidx.localbroadcastmanager.content.LocalBroadcastManager;
 
 import com.pluscubed.logcat.util.ThemeWrapper;
@@ -48,17 +49,22 @@ public class BaseActivity extends AppCompatActivity {
         // Применение текущей темы
         ThemeWrapper.applyTheme(this);
 
-        if (ThemeWrapper.isLightTheme()){
-            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
-                View decorView = getWindow().getDecorView();
-                decorView.setSystemUiVisibility(View.SYSTEM_UI_FLAG_LIGHT_NAVIGATION_BAR | View.SYSTEM_UI_FLAG_LIGHT_STATUS_BAR);
-            } else if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M) {
-                View decorView = getWindow().getDecorView();
-                decorView.setSystemUiVisibility(View.SYSTEM_UI_FLAG_LIGHT_STATUS_BAR);
-            }
-        }
-        getWindow().setNavigationBarColor(ThemeWrapper.resolveNavBarColor(this));
         super.onCreate(savedInstanceState);
+
+        // Light system-bar icons have to go through the insets controller now;
+        // View.setSystemUiVisibility is a no-op once the app draws edge to edge.
+        WindowInsetsControllerCompat controller =
+                WindowCompat.getInsetsController(getWindow(), getWindow().getDecorView());
+        boolean lightTheme = ThemeWrapper.isLightTheme();
+        controller.setAppearanceLightStatusBars(lightTheme);
+        controller.setAppearanceLightNavigationBars(lightTheme);
+
+        // setNavigationBarColor became a no-op on API 35+, where the navigation
+        // bar is always transparent. Keep the tint on the versions that still
+        // honour it.
+        if (Build.VERSION.SDK_INT < Build.VERSION_CODES.VANILLA_ICE_CREAM) {
+            getWindow().setNavigationBarColor(ThemeWrapper.resolveNavBarColor(this));
+        }
     }
 
     @Override

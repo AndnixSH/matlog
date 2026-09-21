@@ -1,26 +1,4 @@
-apply plugin: 'com.github.ben-manes.versions'
-
-buildscript {
-    repositories {
-        google()
-        jcenter()
-    }
-    dependencies {
-        classpath 'com.android.tools.build:gradle:7.2.1'
-        classpath 'com.google.gms:google-services:4.3.10'
-        classpath 'com.github.ben-manes:gradle-versions-plugin:0.20.0'
-    }
+plugins {
+    id 'com.android.application' version '9.4.1' apply false
+    id 'com.google.gms.google-services' version '4.5.0' apply false
 }
-
-allprojects {
-    repositories {
-        google()
-        jcenter()
-        maven { url 'https://jitpack.io' }
-    }
-}
-
-//task wrapper(type: Wrapper) {
-//    gradleVersion = '4.10.2'
-//    distributionType = Wrapper.DistributionType.ALL
-//}

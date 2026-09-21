@@ -13,7 +13,7 @@
         android:layout_centerInParent="true"
         android:contentDescription="@string/app_name"
         android:src="@mipmap/ic_launcher"
-        android:tint="#8f312f"
+        app:tint="#8f312f"
         android:tintMode="multiply"/>
 
     <LinearLayout
@@ -27,7 +27,7 @@
             android:layout_width="16dp"
             android:layout_height="16dp"
             android:contentDescription="@string/record_log"
-            android:tint="#EF5350"
+            app:tint="#EF5350"
             android:visibility="invisible"
             app:srcCompat="@drawable/ic_record_white_24dp"
             tools:visibility="visible" />

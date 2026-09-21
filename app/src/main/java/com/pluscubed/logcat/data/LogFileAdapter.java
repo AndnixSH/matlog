@@ -64,7 +64,7 @@ public class LogFileAdapter extends ArrayAdapter<CharSequence> {
             button.setChecked(checked == position);
         }
 
-        Date lastModified = SaveLogHelper.getLastModifiedDate(filename.toString());
+        Date lastModified = SaveLogHelper.getLastModifiedDate(context, filename.toString());
         DateFormat dateFormat = DateFormat.getDateTimeInstance();
 
         text2.setText(dateFormat.format(lastModified));

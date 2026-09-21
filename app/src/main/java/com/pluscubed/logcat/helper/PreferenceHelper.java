@@ -3,7 +3,7 @@ package com.pluscubed.logcat.helper;
 import android.content.Context;
 import android.content.SharedPreferences;
 import android.content.SharedPreferences.Editor;
-import android.preference.PreferenceManager;
+import androidx.preference.PreferenceManager;
 
 import com.pluscubed.logcat.R;
 import com.pluscubed.logcat.data.ColorScheme;

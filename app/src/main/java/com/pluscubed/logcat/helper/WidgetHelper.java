@@ -12,6 +12,7 @@ import android.widget.RemoteViews;
 import com.pluscubed.logcat.LogcatRecordingService;
 import com.pluscubed.logcat.R;
 import com.pluscubed.logcat.RecordingWidgetProvider;
+import com.pluscubed.logcat.ui.RecordLogDialogActivity;
 import com.pluscubed.logcat.util.UtilLogger;
 
 public class WidgetHelper {
@@ -78,7 +79,7 @@ public class WidgetHelper {
         // if service not running, don't show the "recording" icon
         updateViews.setViewVisibility(R.id.record_badge_image_view, serviceRunning ? View.VISIBLE : View.INVISIBLE);
 
-        PendingIntent pendingIntent = getPendingIntent(context, appWidgetId);
+        PendingIntent pendingIntent = getPendingIntent(context, appWidgetId, serviceRunning);
 
         updateViews.setOnClickPendingIntent(R.id.clickable_linear_layout, pendingIntent);
 
@@ -86,18 +87,37 @@ public class WidgetHelper {
 
     }
 
-    private static PendingIntent getPendingIntent(Context context, int appWidgetId) {
+    private static PendingIntent getPendingIntent(Context context, int appWidgetId, boolean serviceRunning) {
 
-        Intent intent = new Intent(context, RecordingWidgetProvider.class);
-        intent.setAction(RecordingWidgetProvider.ACTION_RECORD_OR_STOP);
-        intent.putExtra(AppWidgetManager.EXTRA_APPWIDGET_ID, appWidgetId);
         // gotta make this unique for this appwidgetid - otherwise, the PendingIntents conflict
         // it seems to be a quasi-bug in Android
         Uri data = Uri.withAppendedPath(Uri.parse(RecordingWidgetProvider.URI_SCHEME + "://widget/id/#"), String.valueOf(appWidgetId));
+
+        if (serviceRunning) {
+            // Tapping while recording stops it. A broadcast is fine here: the
+            // receiver only stops the service.
+            Intent intent = new Intent(context, RecordingWidgetProvider.class);
+            intent.setAction(RecordingWidgetProvider.ACTION_RECORD_OR_STOP);
+            intent.putExtra(AppWidgetManager.EXTRA_APPWIDGET_ID, appWidgetId);
+            intent.setData(data);
+
+            // FLAG_IMMUTABLE is required from API 31.
+            return PendingIntent.getBroadcast(context,
+                    0 /* no requestCode */, intent,
+                    PendingIntent.FLAG_UPDATE_CURRENT | PendingIntent.FLAG_IMMUTABLE);
+        }
+
+        // Tapping while idle opens the record dialog. This has to be an activity
+        // PendingIntent: since Android 10 a BroadcastReceiver can no longer start
+        // an activity from the background, so routing this through the receiver
+        // would silently do nothing.
+        Intent intent = new Intent(context, RecordLogDialogActivity.class);
+        intent.setFlags(Intent.FLAG_ACTIVITY_NEW_TASK);
         intent.setData(data);
 
-        return PendingIntent.getBroadcast(context,
-                0 /* no requestCode */, intent, PendingIntent.FLAG_UPDATE_CURRENT);
+        return PendingIntent.getActivity(context,
+                0 /* no requestCode */, intent,
+                PendingIntent.FLAG_UPDATE_CURRENT | PendingIntent.FLAG_IMMUTABLE);
     }
 
     private static int[] findAppWidgetIds(Context context) {

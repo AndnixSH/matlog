@@ -21,6 +21,7 @@
         <item name="alertDialogTheme">@style/DarkAppTheme.Dialog</item>
         <item name="bottomSheetDialogTheme">@style/AppBottomSheetDialogTheme.Dark</item>
         <item name="prefCardsBackground">@color/pref_card</item>
+        <item name="materialAlertDialogTheme">@style/ThemeOverlay.MatLog.MaterialAlertDialog</item>
         <item name="android:navigationBarColor">@android:color/transparent</item>
     </style>
 
@@ -45,6 +46,7 @@
         <item name="alertDialogTheme">@style/AmoledAppTheme.Dialog</item>
         <item name="bottomSheetDialogTheme">@style/AppBottomSheetDialogTheme.Dark</item>
         <item name="prefCardsBackground">@color/pref_card_amoled</item>
+        <item name="materialAlertDialogTheme">@style/ThemeOverlay.MatLog.Amoled.MaterialAlertDialog</item>
         <item name="android:navigationBarColor">@android:color/transparent</item>
     </style>
 
@@ -65,6 +67,7 @@
         <item name="dialog_style">@android:color/white</item>
         <item name="bottomSheetDialogTheme">@style/AppBottomSheetDialogTheme</item>
         <item name="prefCardsBackground">@color/light_pref_card</item>
+        <item name="materialAlertDialogTheme">@style/ThemeOverlay.MatLog.Light.MaterialAlertDialog</item>
         <item name="android:navigationBarColor">@android:color/transparent</item>
     </style>
 
@@ -111,5 +114,31 @@
 
     <style name="DialogOverlay">
         <item name="android:windowBackground">@android:color/transparent</item>
+    </style>
+
+    <!--
+        MaterialAlertDialogBuilder paints its surface with ?attr/colorSurface
+        and its button text with ?attr/colorPrimary. In this app colorPrimary
+        is the window background (near-black in the dark themes, pure white in
+        the light one), which would make the dialog buttons either match the
+        surface or vanish entirely. Point colorPrimary at the accent for
+        dialogs only, which is also what the old material-dialogs based dialogs
+        used for their buttons.
+    -->
+    <style name="ThemeOverlay.MatLog.MaterialAlertDialog"
+        parent="ThemeOverlay.MaterialComponents.MaterialAlertDialog">
+        <item name="colorPrimary">@color/accent</item>
+        <item name="colorSurface">@color/dark_dialog</item>
+    </style>
+
+    <style name="ThemeOverlay.MatLog.Light.MaterialAlertDialog"
+        parent="ThemeOverlay.MaterialComponents.MaterialAlertDialog">
+        <item name="colorPrimary">@color/light_accent</item>
+    </style>
+
+    <style name="ThemeOverlay.MatLog.Amoled.MaterialAlertDialog"
+        parent="ThemeOverlay.MaterialComponents.MaterialAlertDialog">
+        <item name="colorPrimary">@color/accent_amoled</item>
+        <item name="colorSurface">@color/dark_dialog_amoled</item>
     </style>
 </resources>

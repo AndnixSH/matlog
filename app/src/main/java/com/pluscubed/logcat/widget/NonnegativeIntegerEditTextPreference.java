@@ -4,17 +4,26 @@ import android.content.Context;
 import android.text.method.DigitsKeyListener;
 import android.util.AttributeSet;
 
-import com.afollestad.materialdialogs.prefs.MaterialEditTextPreference;
+import androidx.preference.EditTextPreference;
 
 /**
  * EditTextPreference that only allows inputting integer numbers.
  *
+ * <p>androidx.preference removed {@code getEditText()} and the
+ * {@code onBindDialogView} hook; {@code setOnBindEditTextListener} is the
+ * supported way to reach the EditText as the dialog is built.
+ *
  * @author nlawson
  */
-public class NonnegativeIntegerEditTextPreference extends MaterialEditTextPreference {
+public class NonnegativeIntegerEditTextPreference extends EditTextPreference {
 
-    public NonnegativeIntegerEditTextPreference(Context context, AttributeSet attrs, int defStyle) {
-        super(context, attrs, defStyle);
+    public NonnegativeIntegerEditTextPreference(Context context, AttributeSet attrs, int defStyleAttr, int defStyleRes) {
+        super(context, attrs, defStyleAttr, defStyleRes);
+        setUpEditText();
+    }
+
+    public NonnegativeIntegerEditTextPreference(Context context, AttributeSet attrs, int defStyleAttr) {
+        super(context, attrs, defStyleAttr);
         setUpEditText();
     }
 
@@ -29,6 +38,7 @@ public class NonnegativeIntegerEditTextPreference extends MaterialEditTextPrefer
     }
 
     private void setUpEditText() {
-        getEditText().setKeyListener(DigitsKeyListener.getInstance(false, false));
+        setOnBindEditTextListener(editText ->
+                editText.setKeyListener(DigitsKeyListener.getInstance(false, false)));
     }
 }

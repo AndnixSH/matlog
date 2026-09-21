@@ -27,7 +27,20 @@ Taken from CatLog's FAQ:
 
 #### Where are the logs saved?
 
-On the SD card, under ```/sdcard/catlog/saved_logs/```.
+In a `matlog` folder inside a directory you pick once, the first time you save
+or record a log. Pick **Documents** and your logs land in
+```/Documents/matlog/```.
+
+This is the Android Storage Access Framework: apps can no longer write to a
+hardcoded path like `/sdcard/matlog` (that stopped working at Android 11), so
+the folder has to be granted by you. The grant is remembered, so you only do it
+once. If you ever want to move it, clear the app's data.
+
+#### Why does a dialog ask for access to all device logs?
+
+Android 17 asks for explicit consent the first time an app reads the system
+log. Grant it or MatLog only sees its own logs. On older releases you instead
+need root, or a one-off `adb shell pm grant com.pluscubed.matloglibre android.permission.READ_LOGS`.
 
 #### I can't see any logs!
 
@@ -42,9 +55,28 @@ Development
 -------------
 - Select `fdroid` build variants to build and run immediately
 - For `play` variants:
-    - Put `google-services.json` from Firebase in app/src/main/play/
-    - Put `fabric.properties` in app/
-    - Put signing keys and Fabric API key in local.properties
+    - Put `google-services.json` from Firebase in `app/src/play/`
+    - Put signing keys in `local.properties`
+    - Without `google-services.json` the play flavor still builds; Crashlytics
+      just stays inert (the google-services plugin is applied conditionally)
+
+### Toolchain
+
+| | |
+|---|---|
+| Android Gradle Plugin | 9.4.1 |
+| Gradle | 9.6.1 |
+| JDK | 17+ (built with 21) |
+| compileSdk / targetSdk | 37 (Android 17) |
+| minSdk | 23 |
+
+`minSdk 23` rather than 21 because AndroidX moved its own floor to 23 in 2025
+(appcompat 1.8.0, material 1.14.0). You only lose Android 5.0/5.1.
+
+Note that `local.properties` must point at your SDK, e.g.
+```
+sdk.dir=/path/to/AndroidSDK
+```
 
 License
 ---------

@@ -5,6 +5,8 @@ import android.content.ComponentName;
 import android.content.Context;
 import android.content.Intent;
 
+import androidx.core.content.ContextCompat;
+
 import com.pluscubed.logcat.CrazyLoggerService;
 import com.pluscubed.logcat.LogcatRecordingService;
 import com.pluscubed.logcat.reader.LogcatReaderLoader;
@@ -61,10 +63,18 @@ public class ServiceHelper {
             intent.putExtra(LogcatRecordingService.EXTRA_QUERY_FILTER, queryFilter);
             intent.putExtra(LogcatRecordingService.EXTRA_LEVEL, level);
 
-            context.startService(intent);
+            // The recording service calls startForeground(), so it has to be
+            // entered through startForegroundService on API 26+.
+            ContextCompat.startForegroundService(context, intent);
         }
     }
 
+    /**
+     * getRunningServices is deprecated since API 26 but remains the accurate
+     * way to ask whether *this app's* service is alive; it now returns only the
+     * caller's own services, which is exactly the question being asked here.
+     */
+    @SuppressWarnings("deprecation")
     public static boolean checkIfServiceIsRunning(Context context, Class<?> service) {
 
         String serviceName = service.getName();

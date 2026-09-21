@@ -44,23 +44,16 @@ public class RecordingWidgetProvider extends AppWidgetProvider {
 
         if (ACTION_RECORD_OR_STOP.equals(intent.getAction())) {
 
-            // start or stop recording as necessary
+            // The tap-to-start path is an activity PendingIntent built in
+            // WidgetHelper, because a receiver can no longer launch an activity
+            // from the background. So the only thing that reaches us here is
+            // "stop the current recording".
             synchronized (RecordingWidgetProvider.class) {
 
                 boolean alreadyRunning = ServiceHelper.checkIfServiceIsRunning(context, LogcatRecordingService.class);
 
                 if (alreadyRunning) {
-                    // stop the current recording process
                     DialogHelper.stopRecordingLog(context);
-                } else {
-                    // start a new recording process
-                    Intent targetIntent = new Intent();
-                    targetIntent.setClass(context, RecordLogDialogActivity.class);
-                    targetIntent.setFlags(Intent.FLAG_ACTIVITY_NEW_TASK
-                            | Intent.FLAG_ACTIVITY_MULTIPLE_TASK
-                            | Intent.FLAG_ACTIVITY_EXCLUDE_FROM_RECENTS);
-
-                    context.startActivity(targetIntent);
                 }
             }
         }

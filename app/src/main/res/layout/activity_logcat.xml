@@ -30,15 +30,17 @@
             android:background="@drawable/search_background"/>
     </com.google.android.material.appbar.AppBarLayout>
 
-        <com.mikhaellopez.circularprogressbar.CircularProgressBar
+        <com.google.android.material.progressindicator.CircularProgressIndicator
             android:id="@+id/main_progress_bar"
-            android:layout_width="96dp"
-            android:layout_height="96dp"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
             android:layout_gravity="center"
-            app:cpb_indeterminate_mode="true"
-            app:cpb_progressbar_color="?colorAccent"
             android:layout_margin="8dp"
+            android:indeterminate="true"
             android:visibility="gone"
+            app:indicatorColor="?colorAccent"
+            app:indicatorSize="96dp"
+            app:trackThickness="8dp"
             tools:visibility="visible" />
 
         <androidx.recyclerview.widget.RecyclerView

@@ -1,9 +1,9 @@
 package com.pluscubed.logcat;
 
-import android.app.IntentService;
 import android.app.NotificationChannel;
 import android.app.NotificationManager;
 import android.app.PendingIntent;
+import android.app.Service;
 import android.content.BroadcastReceiver;
 import android.content.Context;
 import android.content.Intent;
@@ -11,10 +11,15 @@ import android.content.IntentFilter;
 import android.net.Uri;
 import android.os.Build;
 import android.os.Handler;
+import android.os.IBinder;
 import android.os.Looper;
 import android.widget.Toast;
 
+import androidx.annotation.Nullable;
 import androidx.core.app.NotificationCompat;
+import androidx.core.app.ServiceCompat;
+import androidx.core.content.ContextCompat;
+import androidx.core.content.IntentCompat;
 
 import com.pluscubed.logcat.data.LogLine;
 import com.pluscubed.logcat.data.SearchCriteria;
@@ -37,19 +42,26 @@ import java.util.Random;
  *
  * @author nolan
  */
-public class LogcatRecordingService extends IntentService {
+public class LogcatRecordingService extends Service {
 
     public static final String URI_SCHEME = "catlog_recording_service";
     public static final String EXTRA_FILENAME = "filename";
     public static final String EXTRA_LOADER = "loader";
     public static final String EXTRA_QUERY_FILTER = "filter";
     public static final String EXTRA_LEVEL = "level";
+
     private static final String ACTION_STOP_RECORDING = "com.pluscubed.catlog.action.STOP_RECORDING";
+    private static final String CHANNEL_ID = "matlog_logging_channel";
+    /** A real, stable notification id. The old code passed a string resource id here. */
+    private static final int NOTIFICATION_ID = 1001;
+
     private static UtilLogger log = new UtilLogger(LogcatRecordingService.class);
     private final Object lock = new Object();
     private LogcatReader mReader;
     private boolean mKilled;
-    private BroadcastReceiver receiver = new BroadcastReceiver() {
+    private Thread mWorkerThread;
+
+    private final BroadcastReceiver receiver = new BroadcastReceiver() {
         @Override
         public void onReceive(Context context, Intent intent) {
             log.d("onReceive()");
@@ -62,12 +74,6 @@ public class LogcatRecordingService extends IntentService {
 
     private Handler handler;
 
-
-    public LogcatRecordingService() {
-        super("AppTrackerService");
-    }
-
-
     @Override
     public void onCreate() {
         super.onCreate();
@@ -76,16 +82,40 @@ public class LogcatRecordingService extends IntentService {
         IntentFilter intentFilter = new IntentFilter(ACTION_STOP_RECORDING);
         intentFilter.addDataScheme(URI_SCHEME);
 
-        registerReceiver(receiver, intentFilter);
+        // The stop action is only ever sent by our own PendingIntent, so the
+        // receiver must not be exported (required from API 34).
+        ContextCompat.registerReceiver(this, receiver, intentFilter,
+                ContextCompat.RECEIVER_NOT_EXPORTED);
 
         handler = new Handler(Looper.getMainLooper());
+
+        createNotificationChannel();
     }
 
+    private void createNotificationChannel() {
+        // Notification channels exist only from API 26; minSdk is 23.
+        if (Build.VERSION.SDK_INT < Build.VERSION_CODES.O) {
+            return;
+        }
+
+        NotificationManager manager =
+                (NotificationManager) getSystemService(Context.NOTIFICATION_SERVICE);
+        if (manager == null) {
+            return;
+        }
+        NotificationChannel channel = new NotificationChannel(CHANNEL_ID,
+                getString(R.string.app_name), NotificationManager.IMPORTANCE_DEFAULT);
+        manager.createNotificationChannel(channel);
+    }
 
     private void initializeReader(Intent intent) {
         try {
             // use the "time" log so we can see what time the logs were logged at
-            LogcatReaderLoader loader = intent.getParcelableExtra(EXTRA_LOADER);
+            LogcatReaderLoader loader = IntentCompat.getParcelableExtra(intent, EXTRA_LOADER, LogcatReaderLoader.class);
+            if (loader == null) {
+                log.e("loader is null, cannot start recording");
+                return;
+            }
             mReader = loader.loadReader();
 
             while (mReader != null && !mReader.readyToRecord() && !mKilled) {
@@ -102,6 +132,27 @@ public class LogcatRecordingService extends IntentService {
 
     }
 
+    @Override
+    public int onStartCommand(@Nullable Intent intent, int flags, int startId) {
+        log.d("onStartCommand()");
+        handleCommand();
+
+        if (mWorkerThread == null && intent != null) {
+            final Intent workerIntent = intent;
+            mWorkerThread = new Thread(() -> handleIntent(workerIntent), "logcat-recorder");
+            mWorkerThread.start();
+        }
+
+        // Not sticky: recording a log is a user-initiated, foreground-backed
+        // operation and should not be silently resurrected.
+        return START_NOT_STICKY;
+    }
+
+    @Nullable
+    @Override
+    public IBinder onBind(Intent intent) {
+        return null;
+    }
 
     @Override
     public void onDestroy() {
@@ -109,20 +160,15 @@ public class LogcatRecordingService extends IntentService {
         log.d("onDestroy()");
         killProcess();
 
-        unregisterReceiver(receiver);
+        try {
+            unregisterReceiver(receiver);
+        } catch (IllegalArgumentException ignore) {
+            // already unregistered
+        }
 
-        stopForeground(true);
+        ServiceCompat.stopForeground(this, ServiceCompat.STOP_FOREGROUND_REMOVE);
 
         WidgetHelper.updateWidgets(getApplicationContext(), false);
-    }
-
-    // This is the old onStart method that will be called on the pre-2.0
-    // platform.
-    @Override
-    public void onStart(Intent intent, int startId) {
-        super.onStart(intent, startId);
-        log.d("onStart()");
-        handleCommand();
     }
 
     private void handleCommand() {
@@ -138,10 +184,12 @@ public class LogcatRecordingService extends IntentService {
         stopRecordingIntent.setData(Uri.withAppendedPath(Uri.parse(URI_SCHEME + "://stop/"),
                 Long.toHexString(new Random().nextLong())));
 
+        // FLAG_IMMUTABLE is mandatory from API 31; this PendingIntent carries
+        // no extras the receiver fills in, so immutable is correct.
         PendingIntent pendingIntent = PendingIntent.getBroadcast(this,
-                0 /* no requestCode */, stopRecordingIntent, PendingIntent.FLAG_ONE_SHOT);
+                0 /* no requestCode */, stopRecordingIntent,
+                PendingIntent.FLAG_ONE_SHOT | PendingIntent.FLAG_IMMUTABLE);
 
-        final String CHANNEL_ID = "matlog_logging_channel";
         // Set the icon, scrolling text and timestamp
         NotificationCompat.Builder notification = new NotificationCompat.Builder(getApplicationContext(), CHANNEL_ID);
         notification.setSmallIcon(R.drawable.notif_icon);
@@ -151,21 +199,7 @@ public class LogcatRecordingService extends IntentService {
         notification.setContentText(getString(R.string.notification_subtext));
         notification.setContentIntent(pendingIntent);
 
-        NotificationManager manager = (NotificationManager) getApplicationContext().getSystemService(Context.NOTIFICATION_SERVICE);
-        // Fix Oreo notifications showing
-        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
-            final CharSequence name = getString(R.string.app_name);
-            final int importance = NotificationManager.IMPORTANCE_DEFAULT;
-            NotificationChannel channel = new NotificationChannel(CHANNEL_ID, name, importance);
-            manager.createNotificationChannel(channel);
-        }
-
-        startForeground(R.string.notification_title, notification.build());
-    }
-
-    protected void onHandleIntent(Intent intent) {
-        log.d("onHandleIntent()");
-        handleIntent(intent);
+        startForeground(NOTIFICATION_ID, notification.build());
     }
 
     private void handleIntent(Intent intent) {
@@ -184,7 +218,7 @@ public class LogcatRecordingService extends IntentService {
         boolean searchCriteriaWillAlwaysMatch = searchCriteria.isEmpty();
         boolean logLevelAcceptsEverything = logLevelLimit == 0;
 
-        SaveLogHelper.deleteLogIfExists(filename);
+        SaveLogHelper.deleteLogIfExists(this, filename);
 
         initializeReader(intent);
 
@@ -209,7 +243,7 @@ public class LogcatRecordingService extends IntentService {
 
                 if (++lineCount % logLinePeriod == 0) {
                     // avoid OutOfMemoryErrors; flush now
-                    SaveLogHelper.saveLog(stringBuilder, filename);
+                    SaveLogHelper.saveLog(this, stringBuilder, filename);
                     stringBuilder.delete(0, stringBuilder.length()); // clear
                 }
             }
@@ -219,7 +253,7 @@ public class LogcatRecordingService extends IntentService {
             killProcess();
             log.d("CatlogService ended");
 
-            boolean logSaved = SaveLogHelper.saveLog(stringBuilder, filename);
+            boolean logSaved = SaveLogHelper.saveLog(this, stringBuilder, filename);
 
             if (logSaved) {
                 makeToast(R.string.log_saved, Toast.LENGTH_SHORT);
@@ -227,6 +261,8 @@ public class LogcatRecordingService extends IntentService {
             } else {
                 makeToast(R.string.unable_to_save_log, Toast.LENGTH_LONG);
             }
+
+            stopSelf();
         }
     }
 

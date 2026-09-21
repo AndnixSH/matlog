@@ -1,12 +1,20 @@
 <?xml version="1.0" encoding="utf-8"?>
 <manifest xmlns:tools="http://schemas.android.com/tools"
-    package="com.pluscubed.logcat"
-          xmlns:android="http://schemas.android.com/apk/res/android">
+    xmlns:android="http://schemas.android.com/apk/res/android">
 
     <uses-permission android:name="android.permission.READ_LOGS"
         tools:ignore="ProtectedPermissions" />
-    <uses-permission android:name="android.permission.WRITE_EXTERNAL_STORAGE"/>
+
     <uses-permission android:name="android.permission.FOREGROUND_SERVICE" />
+    <!--
+        Continuous logcat capture is not one of the standard foreground service
+        categories, so it uses specialUse. Deliberately NOT dataSync: that type
+        is capped at 6 hours per 24h on API 35+, which would silently kill a
+        long recording. specialUse has no time cap.
+    -->
+    <uses-permission android:name="android.permission.FOREGROUND_SERVICE_SPECIAL_USE" />
+
+    <uses-permission android:name="android.permission.POST_NOTIFICATIONS" />
 
     <application
         android:allowBackup="true"
@@ -15,13 +23,13 @@
         android:name=".App"
         android:roundIcon="@mipmap/ic_launcher_round"
         android:theme="@style/Theme.MatLog"
-        android:requestLegacyExternalStorage="true"
         tools:ignore="GoogleAppIndexingWarning">
 
         <!--TODO: REMOVE THIS CONFIGCHANGES ATROCITY-->
         <activity
             android:name="com.pluscubed.logcat.ui.LogcatActivity"
             android:configChanges="screenSize|orientation"
+            android:exported="true"
             android:windowSoftInputMode="adjustPan"
             android:launchMode="singleTop">
             <intent-filter>
@@ -41,21 +49,36 @@
 
         <activity
             android:name="com.pluscubed.logcat.ui.AboutDialogActivity"
+            android:exported="false"
             android:theme="@style/Theme.MatLog.AlertDialog"/>
 
 
         <activity
             android:name="com.pluscubed.logcat.ui.RecordLogDialogActivity"
+            android:exported="false"
             android:theme="@style/Theme.MatLog.AlertDialog"/>
 
 
-        <activity android:name="com.pluscubed.logcat.ui.SettingsActivity"/>
+        <activity
+            android:name="com.pluscubed.logcat.ui.SettingsActivity"
+            android:exported="false"/>
 
-        <service android:name="com.pluscubed.logcat.LogcatRecordingService"/>
+        <service
+            android:name="com.pluscubed.logcat.LogcatRecordingService"
+            android:exported="false"
+            android:foregroundServiceType="specialUse">
+            <property
+                android:name="android.app.PROPERTY_SPECIAL_USE_FGS_SUBTYPE"
+                android:value="Continuous logcat capture written to a user-selected file"/>
+        </service>
 
-        <service android:name="com.pluscubed.logcat.CrazyLoggerService"/>
+        <service
+            android:name="com.pluscubed.logcat.CrazyLoggerService"
+            android:exported="false"/>
 
-        <receiver android:name="com.pluscubed.logcat.RecordingWidgetProvider">
+        <receiver
+            android:name="com.pluscubed.logcat.RecordingWidgetProvider"
+            android:exported="true">
 
             <intent-filter>
                 <action android:name="android.appwidget.action.APPWIDGET_UPDATE"/>

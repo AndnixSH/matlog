@@ -4,14 +4,14 @@
     <PreferenceCategory android:title="@string/pref_cat_appearance"
         android:layout="@layout/pref_category_custom">
 
-        <ListPreference
+        <androidx.preference.ListPreference
             android:defaultValue="0"
             android:entries="@array/theme_names"
             android:entryValues="@array/theme_values"
             android:key="ui.theme"
             android:title="@string/pref_app_theme" />
 
-        <ListPreference
+        <androidx.preference.ListPreference
             android:defaultValue="@string/pref_theme_choice_light_value"
             android:entries="@array/pref_theme_choices_names"
             android:entryValues="@array/pref_theme_choices_values"
@@ -19,14 +19,14 @@
             android:persistent="true"
             android:title="@string/pref_theme_title" />
 
-        <ListPreference
+        <androidx.preference.ListPreference
             android:defaultValue="4"
             android:entries="@array/accent_names"
             android:entryValues="@array/accent_values"
             android:key="ui.accent"
             android:title="@string/pref_ui_accent" />
 
-        <com.afollestad.materialdialogs.prefs.MaterialListPreference
+        <androidx.preference.ListPreference
             android:defaultValue="@string/text_size_medium_value"
             android:entries="@array/text_sizes"
             android:entryValues="@array/text_size_values"
@@ -62,7 +62,7 @@
             android:persistent="true"
             android:title="@string/pref_buffer_title" />
 
-        <com.afollestad.materialdialogs.prefs.MaterialListPreference
+        <androidx.preference.ListPreference
             android:defaultValue="@string/log_level_value_verbose"
             android:entries="@array/log_levels"
             android:entryValues="@array/log_levels_values"
@@ -89,7 +89,7 @@
             android:summary="@string/pref_display_limit_summary"
             android:title="@string/pref_display_limit_title" />
 
-        <com.afollestad.materialdialogs.prefs.MaterialEditTextPreference
+        <androidx.preference.EditTextPreference
             android:defaultValue="@string/pref_filter_pattern_default"
             android:key="@string/pref_filter_pattern"
             android:persistent="true"

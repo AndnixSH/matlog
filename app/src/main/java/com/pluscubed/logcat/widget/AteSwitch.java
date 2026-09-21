@@ -36,7 +36,7 @@ public class AteSwitch extends SwitchCompat {
         ColorStateList sl = new ColorStateList(new int[][]{{-android.R.attr.state_checked},
                 new int[]{android.R.attr.state_checked}},
                 new int[]{Color.parseColor("#757575"),
-                        App.getColorFromAttr(context, R.attr.colorAccent)});
+                        App.getColorFromAttr(context, androidx.appcompat.R.attr.colorAccent)});
         setThumbTintList(sl);
         setTrackTintList(sl);
     }

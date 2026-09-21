@@ -118,7 +118,7 @@ public abstract class ThemeWrapper {
         int theme;
         switch (Theme.values()[getThemeIndex()]){
             case LIGHT:
-                theme = R.style.Theme_MaterialComponents_Light_Dialog_Alert;
+                theme = com.google.android.material.R.style.Theme_MaterialComponents_Light_Dialog_Alert;
                 break;
             case DARK:
                 theme = R.style.DarkAppTheme_Dialog;
@@ -127,7 +127,7 @@ public abstract class ThemeWrapper {
                 theme = R.style.AmoledAppTheme_Dialog;
                 break;
             default:
-                theme = R.style.Theme_MaterialComponents_Light_Dialog_Alert;
+                theme = com.google.android.material.R.style.Theme_MaterialComponents_Light_Dialog_Alert;
         }
         return theme;
     }
@@ -151,9 +151,9 @@ public abstract class ThemeWrapper {
         // Android < Oreo does not have View.SYSTEM_UI_FLAG_LIGHT_NAVIGATION_BAR flag
         // so, we need to set it a little bit more darker
         if (isLightTheme() && Build.VERSION.SDK_INT < Build.VERSION_CODES.O){
-            return App.getColorFromAttr(context, R.attr.colorPrimaryDark);
+            return App.getColorFromAttr(context, androidx.appcompat.R.attr.colorPrimaryDark);
         }
-        return  App.getColorFromAttr(context, R.attr.colorPrimary);
+        return  App.getColorFromAttr(context, androidx.appcompat.R.attr.colorPrimary);
     }
 
     private static boolean isLightScheme(Context context) {

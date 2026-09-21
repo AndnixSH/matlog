@@ -4,7 +4,7 @@ import android.app.Application;
 import android.content.Context;
 import android.content.SharedPreferences;
 import android.graphics.Color;
-import android.preference.PreferenceManager;
+import androidx.preference.PreferenceManager;
 import android.util.TypedValue;
 
 import androidx.annotation.AttrRes;

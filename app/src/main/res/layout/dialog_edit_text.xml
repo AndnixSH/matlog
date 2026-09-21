@@ -1,0 +1,23 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+    Single-line EditText used by the "enter filename" dialogs. Replaces the
+    custom input view that material-dialogs' .input() used to build internally.
+-->
+<FrameLayout xmlns:android="http://schemas.android.com/apk/res/android"
+    android:layout_width="match_parent"
+    android:layout_height="wrap_content">
+
+    <EditText
+        android:id="@+id/edit_text"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:layout_marginStart="24dp"
+        android:layout_marginTop="4dp"
+        android:layout_marginEnd="24dp"
+        android:layout_marginBottom="4dp"
+        android:hint="@string/enter_filename"
+        android:importantForAutofill="no"
+        android:inputType="text"
+        android:maxLines="1" />
+
+</FrameLayout>
