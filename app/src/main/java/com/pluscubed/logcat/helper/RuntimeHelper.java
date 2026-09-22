@@ -43,7 +43,7 @@ public class RuntimeHelper {
      * than as arguments, which is why this is not just another exec().
      */
     private static Process execAsRoot(String[] command) throws IOException {
-        Process process = Runtime.getRuntime().exec("su");
+        Process process = Runtime.getRuntime().exec(SuperUserHelper.getSuCommand());
 
         PrintStream outputStream = null;
         try {

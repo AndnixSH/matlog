@@ -3,6 +3,7 @@ package com.pluscubed.logcat.helper;
 import android.content.ClipData;
 import android.content.ClipboardManager;
 import android.content.Context;
+import android.content.SharedPreferences;
 import android.content.pm.PackageManager;
 import android.os.Handler;
 import android.os.Looper;
@@ -10,6 +11,7 @@ import android.widget.Toast;
 
 import androidx.appcompat.app.AlertDialog;
 import androidx.core.text.HtmlCompat;
+import androidx.preference.PreferenceManager;
 
 import com.google.android.material.dialog.MaterialAlertDialogBuilder;
 import com.pluscubed.logcat.BuildConfig;
@@ -19,6 +21,7 @@ import com.pluscubed.logcat.util.UtilLogger;
 import java.io.BufferedOutputStream;
 import java.io.BufferedReader;
 import java.io.DataOutputStream;
+import java.io.File;
 import java.io.IOException;
 import java.io.InputStreamReader;
 import java.io.PrintStream;
@@ -117,13 +120,69 @@ public class SuperUserHelper {
     private static final long ROOT_PROBE_TIMEOUT_MS = 20 * 1000L;
 
     /**
+     * The su binaries worth asking, in order. The one on the PATH is what
+     * Magisk, KernelSU and APatch provide. Emulators such as LDPlayer put
+     * their own setuid su in /system/xbin, and a Magisk stub installed on top
+     * of that shadows it with one that never answers; the second entry gets
+     * root back on such an image.
+     */
+    private static final String[] SU_CANDIDATES = {"su", "/system/xbin/su"};
+
+    /** The su that answered the probe; "su" until one has. */
+    private static volatile String suCommand = "su";
+
+    /** How root commands should be started: the su binary that granted the probe. */
+    public static String getSuCommand() {
+        return suCommand;
+    }
+
+    private enum Probe {
+        GRANTED, DENIED, NO_ANSWER, UNAVAILABLE
+    }
+
+    /** Remembers which su answered last time, so it is asked first next time. */
+    private static final String PREF_SU_COMMAND = "su_command";
+
+    /**
      * Asks su for root and waits for the answer. The user may well be looking at
      * a superuser prompt while this is blocked.
      */
     private static boolean tryRoot(Context context) {
+        SharedPreferences prefs = PreferenceManager.getDefaultSharedPreferences(context);
+        List<String> candidates = new ArrayList<>();
+        String remembered = prefs.getString(PREF_SU_COMMAND, null);
+        if (remembered != null) {
+            candidates.add(remembered);
+        }
+        for (String candidate : SU_CANDIDATES) {
+            if (!candidates.contains(candidate)) {
+                candidates.add(candidate);
+            }
+        }
+        for (String candidate : candidates) {
+            if (candidate.startsWith("/") && !new File(candidate).exists()) {
+                continue;
+            }
+            Probe probe = probeSu(candidate);
+            if (probe == Probe.GRANTED) {
+                suCommand = candidate;
+                prefs.edit().putString(PREF_SU_COMMAND, candidate).apply();
+                return true;
+            }
+            if (probe == Probe.DENIED) {
+                // The user, or the root manager, said no. Do not go and ask
+                // another su behind their back.
+                break;
+            }
+        }
+        failedToObtainRoot = true;
+        return false;
+    }
+
+    private static Probe probeSu(String command) {
         Process process = null;
         try {
-            process = Runtime.getRuntime().exec("su");
+            process = Runtime.getRuntime().exec(command);
 
             DataOutputStream outputStream = new DataOutputStream(process.getOutputStream());
             outputStream.writeBytes("echo hello\n");
@@ -132,23 +191,26 @@ public class SuperUserHelper {
 
             Integer exitValue = waitFor(process, ROOT_PROBE_TIMEOUT_MS);
             if (exitValue == null) {
-                log.d("no root: su did not answer within %d s", ROOT_PROBE_TIMEOUT_MS / 1000);
-            } else if (exitValue == 0) {
-                return true;
+                log.d("no root: %s did not answer within %d s", command, ROOT_PROBE_TIMEOUT_MS / 1000);
+                return Probe.NO_ANSWER;
             }
-        } catch (IOException | InterruptedException e) {
+            if (exitValue == 0) {
+                return Probe.GRANTED;
+            }
+            log.d("no root: %s exited with %d", command, exitValue);
+            return Probe.DENIED;
+        } catch (IOException e) {
             log.d("no root: %s", e);
-            if (e instanceof InterruptedException) {
-                Thread.currentThread().interrupt();
-            }
+            return Probe.UNAVAILABLE;
+        } catch (InterruptedException e) {
+            log.d("no root: %s", e);
+            Thread.currentThread().interrupt();
+            return Probe.NO_ANSWER;
         } finally {
             if (process != null) {
                 process.destroy();
             }
         }
-
-        failedToObtainRoot = true;
-        return false;
     }
 
     /**
@@ -213,7 +275,7 @@ public class SuperUserHelper {
         // use 'ps' to get this pid and all pids that are related to it (e.g. spawned by it)
         try {
 
-            final Process suProcess = Runtime.getRuntime().exec("su");
+            final Process suProcess = Runtime.getRuntime().exec(suCommand);
 
             new Thread(() -> {
                 try (PrintStream outputStream = new PrintStream(new BufferedOutputStream(suProcess.getOutputStream(), 8192))) {
@@ -271,7 +333,7 @@ public class SuperUserHelper {
         Process suProcess = null;
         PrintStream outputStream = null;
         try {
-            suProcess = Runtime.getRuntime().exec("su");
+            suProcess = Runtime.getRuntime().exec(suCommand);
             outputStream = new PrintStream(new BufferedOutputStream(suProcess.getOutputStream(), 8192));
             outputStream.println("kill " + pid);
             outputStream.println("exit");
