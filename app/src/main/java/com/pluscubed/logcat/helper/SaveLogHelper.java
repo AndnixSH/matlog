@@ -38,10 +38,11 @@ import java.util.zip.ZipOutputStream;
 /**
  * Saved-log storage.
  *
- * <p>Saved logs live in a "matlog" folder inside the directory the user granted
- * through the system folder picker (see {@link LogStorage}). Temporary files -
- * zip staging and the attachment pieces for "send log" - live in the app cache,
- * which needs no permission at all.
+ * <p>Saved logs live in a "matlog" folder: inside the directory the user
+ * granted through the system folder picker on Android 10 and later, or
+ * directly under {@code /sdcard} on Android 9 and below (see
+ * {@link LogStorage}). Temporary files - zip staging and the attachment pieces
+ * for "send log" - live in the app cache, which needs no permission at all.
  */
 public class SaveLogHelper {
 
@@ -142,6 +143,10 @@ public class SaveLogHelper {
      * true.
      */
     private static DocumentFile getSavedLogsDirectory(Context context, boolean create) {
+        if (LogStorage.usesLegacyStorage()) {
+            return getLegacySavedLogsDirectory(context, create);
+        }
+
         Uri treeUri = LogStorage.getTreeUri(context);
         DocumentFile picked = LogStorage.getPickedFolder(context);
         if (picked == null || treeUri == null) {
@@ -195,7 +200,55 @@ public class SaveLogHelper {
         return created;
     }
 
+    /**
+     * {@code /sdcard/matlog} on Android 9 and below, wrapped as a DocumentFile
+     * so that the rest of this class reads and lists it the same way as a
+     * picked folder. Creating files in it goes through {@link #createFile},
+     * not the wrapper.
+     */
+    private static DocumentFile getLegacySavedLogsDirectory(Context context, boolean create) {
+        if (!LogStorage.hasLegacyPermission(context)) {
+            return null;
+        }
+        File dir = new File(LogStorage.getLegacyRoot(), SAVED_LOGS_DIR);
+        if (!dir.isDirectory()) {
+            if (!create) {
+                return null;
+            }
+            if (!dir.mkdirs() && !dir.isDirectory()) {
+                log.e("couldn't create %s", dir);
+                return null;
+            }
+        }
+        return DocumentFile.fromFile(dir);
+    }
+
+    /**
+     * A new file in {@code dir}. A plain directory gets a plain File: the
+     * DocumentFile wrapper would tack ".txt" or ".zip" onto a name that
+     * already ends that way.
+     */
+    private static DocumentFile createFile(DocumentFile dir, String mimeType, String filename) {
+        if ("file".equals(dir.getUri().getScheme())) {
+            File target = new File(dir.getUri().getPath(), filename);
+            try {
+                if (!target.exists() && !target.createNewFile()) {
+                    return null;
+                }
+            } catch (IOException e) {
+                log.e(e, "couldn't create %s", target);
+                return null;
+            }
+            return DocumentFile.fromFile(target);
+        }
+        return dir.createFile(mimeType, filename);
+    }
+
     public static boolean hasSavedLogsFolder(Context context) {
+        if (LogStorage.usesLegacyStorage()) {
+            // The folder itself is made on the first save.
+            return LogStorage.hasLegacyPermission(context);
+        }
         return getSavedLogsDirectory(context, false) != null;
     }
 
@@ -207,7 +260,9 @@ public class SaveLogHelper {
         if (hasSavedLogsFolder(context)) {
             return true;
         }
-        Toast.makeText(context, R.string.sd_card_not_found, Toast.LENGTH_LONG).show();
+        Toast.makeText(context, LogStorage.usesLegacyStorage()
+                ? R.string.permission_not_granted
+                : R.string.sd_card_not_found, Toast.LENGTH_LONG).show();
         return false;
     }
 
@@ -316,7 +371,7 @@ public class SaveLogHelper {
 
         DocumentFile file = dir.findFile(filename);
         if (file == null) {
-            file = dir.createFile("text/plain", filename);
+            file = createFile(dir, "text/plain", filename);
         }
         if (file == null) {
             log.e("couldn't create file %s", filename);
@@ -380,7 +435,7 @@ public class SaveLogHelper {
 
         DocumentFile zipFile = dir.findFile(filename);
         if (zipFile == null) {
-            zipFile = dir.createFile("application/zip", filename);
+            zipFile = createFile(dir, "application/zip", filename);
         }
         if (zipFile == null) {
             log.e("couldn't create zip %s", filename);

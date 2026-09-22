@@ -1,23 +1,31 @@
 package com.pluscubed.logcat.helper;
 
+import android.Manifest;
 import android.content.Context;
 import android.content.Intent;
 import android.content.SharedPreferences;
 import android.content.UriPermission;
+import android.content.pm.PackageManager;
 import android.net.Uri;
+import android.os.Build;
+import android.os.Environment;
 import android.util.Log;
 
+import java.io.File;
 import java.util.List;
 
+import androidx.core.content.ContextCompat;
 import androidx.documentfile.provider.DocumentFile;
 
 /**
  * Owns the folder that saved logs are written to.
  *
- * <p>Logs live in a directory the user picks once through the system folder
- * picker (Storage Access Framework); the grant is persisted so the choice
- * survives reboots and app restarts. This replaces the old hardcoded
- * {@code /sdcard/matlog} path, which stopped being writable at API 30.
+ * <p>On Android 10 and later, logs live in a directory the user picks once
+ * through the system folder picker (Storage Access Framework); the grant is
+ * persisted so the choice survives reboots and app restarts. On Android 9 and
+ * below, where {@code /sdcard} is still writable with the storage permission,
+ * they go straight to {@code /sdcard/matlog} as MatLog 1.x wrote them, and
+ * nobody is asked to pick anything.
  */
 public class LogStorage {
 
@@ -26,6 +34,26 @@ public class LogStorage {
 
     private LogStorage() {
     }
+
+    // ------------------------------------------------ Android 9 and below
+
+    /** True where logs are written to {@code /sdcard/matlog} directly. */
+    public static boolean usesLegacyStorage() {
+        return Build.VERSION.SDK_INT <= Build.VERSION_CODES.P;
+    }
+
+    /** Whether the storage permission that {@link #usesLegacyStorage} needs has been granted. */
+    public static boolean hasLegacyPermission(Context context) {
+        return ContextCompat.checkSelfPermission(context, Manifest.permission.WRITE_EXTERNAL_STORAGE)
+                == PackageManager.PERMISSION_GRANTED;
+    }
+
+    /** {@code /sdcard}, the parent of the "matlog" folder on Android 9 and below. */
+    public static File getLegacyRoot() {
+        return Environment.getExternalStorageDirectory();
+    }
+
+    // ------------------------------------------------ Android 10 and later
 
     /**
      * The persisted folder grant, or null when the user has not chosen one (or
@@ -101,6 +129,9 @@ public class LogStorage {
     }
 
     public static boolean hasFolder(Context context) {
+        if (usesLegacyStorage()) {
+            return hasLegacyPermission(context);
+        }
         return getPickedFolder(context) != null;
     }
 }
