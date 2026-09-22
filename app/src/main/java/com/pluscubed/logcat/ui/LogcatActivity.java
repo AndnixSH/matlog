@@ -152,6 +152,12 @@ public class LogcatActivity extends BaseActivity implements FilterListener, LogL
     private Set<String> mSearchSuggestionsSet = new CopyOnWriteArraySet<>();
     /** Only the tags seen in the log, for completing {@code tag:} values. */
     private final Set<String> mSeenTags = new CopyOnWriteArraySet<>();
+    /**
+     * Only the saved filters, for completing bare text in the search box. Tags
+     * are deliberately not offered there: with hundreds of them in a busy log
+     * they drowned the keys, and {@code tag:} is where they belong.
+     */
+    private final Set<String> mSavedFilters = new CopyOnWriteArraySet<>();
     private SimpleCursorAdapter mSearchSuggestionsAdapter;
     private SearchView.SearchAutoComplete mSearchAutoComplete;
     /**
@@ -178,7 +184,7 @@ public class LogcatActivity extends BaseActivity implements FilterListener, LogL
 
         @Override
         public Collection<String> history() {
-            return mSearchSuggestionsSet;
+            return mSavedFilters;
         }
     };
 
@@ -522,7 +528,7 @@ public class LogcatActivity extends BaseActivity implements FilterListener, LogL
         try (CatlogDBHelper dbHelper = new CatlogDBHelper(this)) {
 
             for (FilterItem filterItem : dbHelper.findFilterItems()) {
-                addToAutocompleteSuggestions(filterItem.getText());
+                addSavedFilterToSuggestions(filterItem.getText());
             }
         }
 
@@ -1100,7 +1106,7 @@ public class LogcatActivity extends BaseActivity implements FilterListener, LogL
                         filterAdapter.sort(FilterItem.DEFAULT_COMPARATOR);
                         filterAdapter.notifyDataSetChanged();
 
-                        addToAutocompleteSuggestions(trimmed);
+                        addSavedFilterToSuggestions(trimmed);
                     }
                 });
 
@@ -1878,6 +1884,15 @@ public class LogcatActivity extends BaseActivity implements FilterListener, LogL
         }
     }
 
+    /** A saved filter: offered for bare text in the search box as well as in the dialogs. */
+    private void addSavedFilterToSuggestions(String text) {
+        if (mSavedFilters.size() < MAX_NUM_SUGGESTIONS) {
+            mSavedFilters.add(text);
+        }
+        addToAutocompleteSuggestions(text);
+    }
+
+    /** Anything the recording and add-filter dialogs may complete: tags and saved filters alike. */
     private void addToAutocompleteSuggestions(String trimmed) {
         if (mSearchSuggestionsSet.size() < MAX_NUM_SUGGESTIONS
                 && !mSearchSuggestionsSet.contains(trimmed)) {

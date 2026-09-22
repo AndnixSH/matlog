@@ -18,7 +18,9 @@ import java.util.regex.Pattern;
  * is left alone. With nothing typed yet for the term, the plain keys are
  * offered; once a letter is there, so are the negated, regex and exact
  * variants, the {@code level:} / {@code is:} values, {@code package:mine}
- * and earlier searches. After a key, its values are offered: the tags,
+ * and the saved filters. Tag names are never offered for bare text - only
+ * after {@code tag:} - so that a busy log's hundreds of tags do not bury the
+ * keys. After a key, its values are offered: the tags,
  * packages and processes seen so far, the level names, the {@code is:}
  * kinds and a few {@code age:} spans. As in Studio, a completed value gets a
  * trailing space and a completed key does not, and nothing is offered inside
@@ -69,7 +71,7 @@ public final class SearchSuggestions {
 
         Collection<String> processes();
 
-        /** Whole entries from earlier searches and saved filters. */
+        /** Whole entries worth offering for bare text: the saved filters. Not the tags. */
         Collection<String> history();
     }
 
