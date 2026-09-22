@@ -64,13 +64,13 @@
         <activity
             android:name="com.pluscubed.logcat.ui.AboutDialogActivity"
             android:exported="false"
-            android:theme="@style/Theme.MatLog.AlertDialog"/>
+            android:theme="@style/Theme.MatLog.Translucent"/>
 
 
         <activity
             android:name="com.pluscubed.logcat.ui.RecordLogDialogActivity"
             android:exported="false"
-            android:theme="@style/Theme.MatLog.AlertDialog"/>
+            android:theme="@style/Theme.MatLog.Translucent"/>
 
 
         <activity

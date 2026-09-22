@@ -71,19 +71,6 @@
         <item name="android:navigationBarColor">@android:color/transparent</item>
     </style>
 
-    <style name="Theme.MatLog.AlertDialog" parent="@style/Theme.MaterialComponents.Dialog.Alert">
-        <item name="colorPrimary">@color/primary</item>
-        <item name="colorPrimaryDark">@color/primary_dark</item>
-        <item name="colorAccent">@color/accent</item>
-
-        <item name="android:colorPrimary">@color/primary</item>
-        <item name="android:colorPrimaryDark">@color/primary_dark</item>
-        <item name="android:colorAccent">@color/accent</item>
-
-        <item name="windowActionBar">false</item>
-        <item name="windowNoTitle">true</item>
-    </style>
-
     <!-- The Cc / W / .* toggles of the find bar; selected ones take the accent colour in code. -->
     <style name="FindToggle">
         <item name="android:layout_width">wrap_content</item>
@@ -135,8 +122,43 @@
         <item name="behavior_skipCollapsed">false</item>
     </style>
 
-    <style name="DialogOverlay">
+    <!--
+        For activities that exist only to host a dialog (the record-log and
+        about dialogs). The activity's own window is see-through, so the log
+        list stays visible under the dialog's dim rather than being replaced
+        by a blank sheet; the dialog inside still takes its colours from the
+        parent app theme. windowIsTranslucent is what makes the system keep
+        drawing the activity underneath, so it must also be on the manifest
+        theme, which is read before onCreate.
+    -->
+    <style name="Theme.MatLog.Translucent" parent="Theme.MatLog">
+        <item name="android:windowIsTranslucent">true</item>
         <item name="android:windowBackground">@android:color/transparent</item>
+        <item name="android:windowContentOverlay">@null</item>
+        <item name="android:windowNoTitle">true</item>
+        <item name="android:windowAnimationStyle">@null</item>
+        <item name="android:statusBarColor">@android:color/transparent</item>
+        <item name="android:navigationBarColor">@android:color/transparent</item>
+    </style>
+
+    <style name="Theme.MatLog.Amoled.Translucent" parent="Theme.MatLog.Amoled">
+        <item name="android:windowIsTranslucent">true</item>
+        <item name="android:windowBackground">@android:color/transparent</item>
+        <item name="android:windowContentOverlay">@null</item>
+        <item name="android:windowNoTitle">true</item>
+        <item name="android:windowAnimationStyle">@null</item>
+        <item name="android:statusBarColor">@android:color/transparent</item>
+        <item name="android:navigationBarColor">@android:color/transparent</item>
+    </style>
+
+    <style name="Theme.MatLog.Light.Translucent" parent="Theme.MatLog.Light">
+        <item name="android:windowIsTranslucent">true</item>
+        <item name="android:windowBackground">@android:color/transparent</item>
+        <item name="android:windowContentOverlay">@null</item>
+        <item name="android:windowNoTitle">true</item>
+        <item name="android:windowAnimationStyle">@null</item>
+        <item name="android:statusBarColor">@android:color/transparent</item>
+        <item name="android:navigationBarColor">@android:color/transparent</item>
     </style>
 
     <!--

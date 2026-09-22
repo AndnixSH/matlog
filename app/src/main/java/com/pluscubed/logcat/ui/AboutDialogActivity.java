@@ -27,10 +27,13 @@ public class AboutDialogActivity extends BaseActivity {
     private static UtilLogger log = new UtilLogger(AboutDialogActivity.class);
 
 
+    @Override
+    protected boolean isDialogActivity() {
+        return true;
+    }
+
     public void onCreate(Bundle savedInstanceState) {
         super.onCreate(savedInstanceState);
-        // Fix window background overlay in dialog activities
-        getTheme().applyStyle(R.style.DialogOverlay, true);
 
         DialogFragment fragment = new AboutDialog();
         fragment.show(getSupportFragmentManager(), "aboutDialog");

@@ -19,7 +19,17 @@ public abstract class ThemeWrapper {
      * Apply theme to an Activity
      */
     public static void applyTheme(Activity ctx) {
-        ctx.setTheme(styleFor(resolveTheme(ctx)));
+        applyTheme(ctx, false);
+    }
+
+    /**
+     * Apply theme to an Activity. With {@code translucent} the variant whose
+     * window is see-through is used, for activities that only host a dialog
+     * and want the screen behind them to stay visible under the dim.
+     */
+    public static void applyTheme(Activity ctx, boolean translucent) {
+        Theme theme = resolveTheme(ctx);
+        ctx.setTheme(translucent ? translucentStyleFor(theme) : styleFor(theme));
         applyAccent(ctx);
     }
 
@@ -57,6 +67,19 @@ public abstract class ThemeWrapper {
             case LIGHT:
             default:
                 return R.style.Theme_MatLog_Light;
+        }
+    }
+
+    @StyleRes
+    private static int translucentStyleFor(Theme theme) {
+        switch (theme) {
+            case DARK:
+                return R.style.Theme_MatLog_Translucent;
+            case AMOLED:
+                return R.style.Theme_MatLog_Amoled_Translucent;
+            case LIGHT:
+            default:
+                return R.style.Theme_MatLog_Light_Translucent;
         }
     }
 

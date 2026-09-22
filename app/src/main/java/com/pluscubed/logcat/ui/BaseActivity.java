@@ -47,7 +47,7 @@ public class BaseActivity extends AppCompatActivity {
         LocalBroadcastManager.getInstance(this).registerReceiver(mThemeReceiver,
                 new IntentFilter("org.openintents.action.REFRESH_THEME"));
         // Применение текущей темы
-        ThemeWrapper.applyTheme(this);
+        ThemeWrapper.applyTheme(this, isDialogActivity());
 
         super.onCreate(savedInstanceState);
 
@@ -65,6 +65,18 @@ public class BaseActivity extends AppCompatActivity {
         if (Build.VERSION.SDK_INT < Build.VERSION_CODES.VANILLA_ICE_CREAM) {
             getWindow().setNavigationBarColor(ThemeWrapper.resolveNavBarColor(this));
         }
+    }
+
+    /**
+     * True for an activity that only hosts a dialog. It gets a see-through
+     * window so that whatever was on screen stays visible under the dialog's
+     * dim, instead of a blank sheet in the theme's background colour. The
+     * manifest theme of such an activity must be translucent as well: the
+     * system decides from that, before onCreate, whether the activity behind
+     * keeps being drawn.
+     */
+    protected boolean isDialogActivity() {
+        return false;
     }
 
     @Override

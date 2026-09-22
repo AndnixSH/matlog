@@ -25,10 +25,13 @@ public class RecordLogDialogActivity extends BaseActivity {
     public static final String EXTRA_QUERY_SUGGESTIONS = "suggestions";
 
     @Override
+    protected boolean isDialogActivity() {
+        return true;
+    }
+
+    @Override
     protected void onCreate(Bundle savedInstanceState) {
         super.onCreate(savedInstanceState);
-        // Fix window background overlay in dialog activities
-        getTheme().applyStyle(R.style.DialogOverlay, true);
         showDialog();
     }
 
