@@ -19,6 +19,9 @@
 package com.pluscubed.logcat.data;
 
 import android.content.Context;
+import android.text.SpannableString;
+import android.text.Spanned;
+import android.text.style.BackgroundColorSpan;
 import android.util.TypedValue;
 import android.view.LayoutInflater;
 import android.view.View;
@@ -61,6 +64,10 @@ public class LogLineAdapter extends RecyclerView.Adapter<LogLineViewHolder> impl
     private LogLineViewHolder.OnClickListener mClickListener;
 
     private ArrayList<LogLine> mOriginalValues;
+
+    /** "Find in log" state; see {@link #setFind}. */
+    private LogFinder.Query mFindQuery;
+    private LogFinder.Match mCurrentMatch;
     private ArrayFilter mFilter;
 
     private int logLevelLimit = 0;
@@ -256,14 +263,14 @@ public class LogLineAdapter extends RecyclerView.Adapter<LogLineViewHolder> impl
         //OUTPUT TEXT VIEW
         TextView output = holder.itemView.findViewById(R.id.log_output_text);
         output.setSingleLine(!logLine.isExpanded());
-        output.setText(logLine.getLogOutput());
+        output.setText(withFindMarks(context, logLine.getLogOutput(), logLine, false));
         output.setTextColor(textColor);
 
 
         //TAG TEXT VIEW
         TextView tag = holder.itemView.findViewById(R.id.tag_text);
         tag.setSingleLine(!logLine.isExpanded());
-        tag.setText(logLine.getTag());
+        tag.setText(withFindMarks(context, logLine.getTag(), logLine, true));
         tag.setVisibility(logLine.getLogLevel() == -1 ? View.GONE : View.VISIBLE);
 
 
@@ -343,6 +350,35 @@ public class LogLineAdapter extends RecyclerView.Adapter<LogLineViewHolder> impl
 
     public List<LogLine> getObjects() {
         return mObjects;
+    }
+
+    /**
+     * Marks every occurrence of {@code query} on the rows, and {@code current}
+     * more strongly. Null clears the marks. The caller refreshes the rows.
+     */
+    public void setFind(LogFinder.Query query, LogFinder.Match current) {
+        mFindQuery = query;
+        mCurrentMatch = current;
+    }
+
+    private CharSequence withFindMarks(Context context, String text, LogLine line, boolean inTag) {
+        if (mFindQuery == null || text == null) {
+            return text;
+        }
+        List<int[]> ranges = mFindQuery.rangesIn(text);
+        if (ranges.isEmpty()) {
+            return text;
+        }
+        SpannableString marked = new SpannableString(text);
+        int match = ContextCompat.getColor(context, R.color.find_match);
+        int current = ContextCompat.getColor(context, R.color.find_match_current);
+        for (int[] range : ranges) {
+            boolean isCurrent = mCurrentMatch != null && mCurrentMatch.line == line
+                    && mCurrentMatch.inTag == inTag && mCurrentMatch.start == range[0];
+            marked.setSpan(new BackgroundColorSpan(isCurrent ? current : match),
+                    range[0], range[1], Spanned.SPAN_EXCLUSIVE_EXCLUSIVE);
+        }
+        return marked;
     }
 
     public void setClickListener(LogLineViewHolder.OnClickListener clickListener) {

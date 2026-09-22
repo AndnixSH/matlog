@@ -28,6 +28,12 @@
         app:showAsAction="ifRoom" />
 
     <item
+        android:id="@+id/menu_find"
+        android:icon="@drawable/ic_find_in_page"
+        android:title="@string/find_in_log"
+        app:showAsAction="ifRoom" />
+
+    <item
         android:id="@+id/menu_manage_saving"
         android:icon="@drawable/ic_insert_drive_file_white_24dp"
         android:title="@string/file">

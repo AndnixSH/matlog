@@ -28,6 +28,16 @@
             app:searchIcon="@drawable/ic_search"
             app:searchHintIcon="@drawable/ic_search"
             android:background="@drawable/search_background"/>
+
+        <include
+            android:id="@+id/find_bar"
+            layout="@layout/find_bar"
+            android:layout_width="match_parent"
+            android:layout_height="40dp"
+            android:layout_marginStart="8dp"
+            android:layout_marginEnd="8dp"
+            android:layout_marginBottom="8dp"
+            android:visibility="gone" />
     </com.google.android.material.appbar.AppBarLayout>
 
         <com.google.android.material.progressindicator.CircularProgressIndicator

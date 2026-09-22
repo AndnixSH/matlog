@@ -286,4 +286,16 @@
     <string name="suggestion_name_key">Name this filter</string>
     <string name="suggestion_pid_key">Process id is exactly a number</string>
     <string name="suggestion_package_mine">Logs from this app</string>
+
+    <!-- Find in log -->
+    <string name="find_in_log">Find in log</string>
+    <string name="find_hint">Find in shown lines…</string>
+    <string name="find_count">%1$d/%2$d</string>
+    <string name="find_invalid_regex">bad regex</string>
+    <string name="find_match_case">Match case</string>
+    <string name="find_whole_words">Whole words</string>
+    <string name="find_regex">Regular expression</string>
+    <string name="find_previous">Previous match</string>
+    <string name="find_next">Next match</string>
+    <string name="find_close">Close find</string>
 </resources>

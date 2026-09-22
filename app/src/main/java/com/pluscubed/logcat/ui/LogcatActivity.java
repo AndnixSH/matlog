@@ -17,8 +17,10 @@ import android.provider.DocumentsContract;
 import android.text.Editable;
 import android.text.Spanned;
 import android.text.TextUtils;
+import android.text.TextWatcher;
 import android.text.style.BackgroundColorSpan;
 import android.util.Log;
+import android.view.KeyEvent;
 import android.view.LayoutInflater;
 import android.view.Menu;
 import android.view.MenuInflater;
@@ -29,6 +31,7 @@ import android.view.inputmethod.InputMethodManager;
 import android.widget.ArrayAdapter;
 import android.widget.AutoCompleteTextView;
 import android.widget.CheckBox;
+import android.widget.EditText;
 import android.widget.Filter;
 import android.widget.Filter.FilterListener;
 import android.widget.LinearLayout;
@@ -66,6 +69,7 @@ import com.pluscubed.logcat.R;
 import com.pluscubed.logcat.data.ColorScheme;
 import com.pluscubed.logcat.data.FilterAdapter;
 import com.pluscubed.logcat.data.LogFileAdapter;
+import com.pluscubed.logcat.data.LogFinder;
 import com.pluscubed.logcat.data.LogLine;
 import com.pluscubed.logcat.data.LogLineAdapter;
 import com.pluscubed.logcat.data.LogLineViewHolder;
@@ -176,6 +180,21 @@ public class LogcatActivity extends BaseActivity implements FilterListener, LogL
             return mSearchSuggestionsSet;
         }
     };
+
+    // "Find in log", see initFindBar().
+    private View mFindBar;
+    private EditText mFindText;
+    private TextView mFindCount;
+    private TextView mFindCase;
+    private TextView mFindWord;
+    private TextView mFindRegex;
+    private int mFindToggleOffColor;
+    private LogFinder.Query mFindQuery;
+    private List<LogFinder.Match> mFindMatches = Collections.emptyList();
+    private int mFindIndex = -1;
+    /** Set while the find code itself refreshes the rows, so the data observer ignores that. */
+    private boolean mFindApplying;
+    private final Runnable mFindRecount = this::recountFind;
 
     private String mCurrentlyOpenLog = null;
 
@@ -335,7 +354,9 @@ public class LogcatActivity extends BaseActivity implements FilterListener, LogL
         getOnBackPressedDispatcher().addCallback(this, new OnBackPressedCallback(true) {
             @Override
             public void handleOnBackPressed() {
-                if (mCurrentlyOpenLog != null) {
+                if (isFindBarShowing()) {
+                    hideFindBar();
+                } else if (mCurrentlyOpenLog != null) {
                     startMainLog();
                 } else {
                     setEnabled(false);
@@ -349,6 +370,16 @@ public class LogcatActivity extends BaseActivity implements FilterListener, LogL
         runUpdatesIfNecessaryAndShowWelcomeMessage();
 
         initSearchView();
+        initFindBar();
+    }
+
+    @Override
+    public boolean onKeyShortcut(int keyCode, KeyEvent event) {
+        if (keyCode == KeyEvent.KEYCODE_F) {
+            showFindBar();
+            return true;
+        }
+        return super.onKeyShortcut(keyCode, event);
     }
 
     @Override
@@ -783,6 +814,9 @@ public class LogcatActivity extends BaseActivity implements FilterListener, LogL
                     .show();
             return true;
 
+        } else if (itemId == R.id.menu_find) {
+            showFindBar();
+            return true;
         } else if (itemId == R.id.menu_log_level) {
             showLogLevelDialog();
             return true;
@@ -1672,6 +1706,24 @@ public class LogcatActivity extends BaseActivity implements FilterListener, LogL
     private void setUpAdapter() {
 
         mLogListAdapter = new LogLineAdapter();
+        // Lines arriving, being truncated or refiltered move the find
+        // matches about, so the count and the current match are redone.
+        mLogListAdapter.registerAdapterDataObserver(new RecyclerView.AdapterDataObserver() {
+            @Override
+            public void onChanged() {
+                scheduleFindRecount();
+            }
+
+            @Override
+            public void onItemRangeInserted(int positionStart, int itemCount) {
+                scheduleFindRecount();
+            }
+
+            @Override
+            public void onItemRangeRemoved(int positionStart, int itemCount) {
+                scheduleFindRecount();
+            }
+        });
         mLogListAdapter.setClickListener(this);
         RecyclerView mActivityLogcatList = findViewById(R.id.list);
         mActivityLogcatList.setAdapter(mLogListAdapter);
@@ -1982,6 +2034,175 @@ public class LogcatActivity extends BaseActivity implements FilterListener, LogL
             this.mOnFinishedRunnable = onFinished;
         }
 
+    }
+
+    // ------------------------------------------------------------------
+    // Find in log: marks text in the lines on screen and walks through the
+    // occurrences without hiding anything, like Ctrl+F in Studio's Logcat.
+    // ------------------------------------------------------------------
+
+    private static final long FIND_RECOUNT_DELAY_MS = 250;
+
+    private void initFindBar() {
+        mFindBar = findViewById(R.id.find_bar);
+        mFindText = findViewById(R.id.find_text);
+        mFindCount = findViewById(R.id.find_count);
+        mFindCase = findViewById(R.id.find_case);
+        mFindWord = findViewById(R.id.find_word);
+        mFindRegex = findViewById(R.id.find_regex);
+        mFindToggleOffColor = mFindCase.getCurrentTextColor();
+
+        View.OnClickListener toggle = v -> {
+            v.setSelected(!v.isSelected());
+            styleFindToggle((TextView) v);
+            updateFindQuery();
+        };
+        mFindCase.setOnClickListener(toggle);
+        mFindWord.setOnClickListener(toggle);
+        mFindRegex.setOnClickListener(toggle);
+
+        mFindText.addTextChangedListener(new TextWatcher() {
+            @Override
+            public void beforeTextChanged(CharSequence s, int start, int count, int after) {
+            }
+
+            @Override
+            public void onTextChanged(CharSequence s, int start, int before, int count) {
+            }
+
+            @Override
+            public void afterTextChanged(Editable s) {
+                updateFindQuery();
+            }
+        });
+        mFindText.setOnEditorActionListener((v, actionId, event) -> {
+            findNext();
+            return true;
+        });
+        findViewById(R.id.find_prev).setOnClickListener(v -> findPrevious());
+        findViewById(R.id.find_next).setOnClickListener(v -> findNext());
+        findViewById(R.id.find_close).setOnClickListener(v -> hideFindBar());
+    }
+
+    private void styleFindToggle(TextView toggle) {
+        toggle.setTextColor(toggle.isSelected()
+                ? App.getColorFromAttr(this, androidx.appcompat.R.attr.colorAccent)
+                : mFindToggleOffColor);
+    }
+
+    private boolean isFindBarShowing() {
+        return mFindBar != null && mFindBar.getVisibility() == View.VISIBLE;
+    }
+
+    private void showFindBar() {
+        mFindBar.setVisibility(View.VISIBLE);
+        mFindText.requestFocus();
+        mFindText.selectAll();
+        InputMethodManager imm = (InputMethodManager) getSystemService(Context.INPUT_METHOD_SERVICE);
+        imm.showSoftInput(mFindText, 0);
+        updateFindQuery();
+    }
+
+    private void hideFindBar() {
+        if (!isFindBarShowing()) {
+            return;
+        }
+        mFindBar.setVisibility(View.GONE);
+        InputMethodManager imm = (InputMethodManager) getSystemService(Context.INPUT_METHOD_SERVICE);
+        imm.hideSoftInputFromWindow(mFindText.getWindowToken(), 0);
+        mFindText.clearFocus();
+        mHandler.removeCallbacks(mFindRecount);
+        mFindQuery = null;
+        mFindMatches = Collections.emptyList();
+        mFindIndex = -1;
+        applyFind(false);
+    }
+
+    /** Re-reads the field and the toggles, then points at the first match on screen. */
+    private void updateFindQuery() {
+        if (!isFindBarShowing()) {
+            return;
+        }
+        String text = mFindText.getText().toString();
+        mFindQuery = text.isEmpty() ? null
+                : new LogFinder.Query(text, mFindCase.isSelected(), mFindWord.isSelected(), mFindRegex.isSelected());
+        recountFind(true);
+    }
+
+    private void scheduleFindRecount() {
+        if (!isFindBarShowing() || mFindApplying || mHandler == null) {
+            return;
+        }
+        mHandler.removeCallbacks(mFindRecount);
+        mHandler.postDelayed(mFindRecount, FIND_RECOUNT_DELAY_MS);
+    }
+
+    /** Rescans the list after it changed; the current match is kept if it is still there. */
+    private void recountFind() {
+        if (isFindBarShowing()) {
+            recountFind(false);
+        }
+    }
+
+    private void recountFind(boolean jump) {
+        LogFinder.Match previous = currentFindMatch();
+        mFindMatches = mFindQuery == null
+                ? Collections.<LogFinder.Match>emptyList()
+                : LogFinder.find(mLogListAdapter.getObjects(), mFindQuery);
+        RecyclerView list = findViewById(R.id.list);
+        int firstVisible = ((LinearLayoutManager) list.getLayoutManager()).findFirstVisibleItemPosition();
+        int from = jump ? Math.max(firstVisible, 0) : previous != null ? previous.position : 0;
+        mFindIndex = LogFinder.indexOf(mFindMatches, jump ? null : previous, from);
+        applyFind(jump);
+    }
+
+    private LogFinder.Match currentFindMatch() {
+        return mFindIndex >= 0 && mFindIndex < mFindMatches.size() ? mFindMatches.get(mFindIndex) : null;
+    }
+
+    private void findNext() {
+        if (mFindMatches.isEmpty()) {
+            return;
+        }
+        mFindIndex = (mFindIndex + 1) % mFindMatches.size();
+        applyFind(true);
+    }
+
+    private void findPrevious() {
+        if (mFindMatches.isEmpty()) {
+            return;
+        }
+        mFindIndex = (mFindIndex - 1 + mFindMatches.size()) % mFindMatches.size();
+        applyFind(true);
+    }
+
+    /** Pushes the query and the current match into the rows, and scrolls to the match when asked. */
+    private void applyFind(boolean scroll) {
+        LogFinder.Match current = currentFindMatch();
+        mFindApplying = true;
+        try {
+            mLogListAdapter.setFind(mFindQuery, current);
+            mLogListAdapter.notifyDataSetChanged();
+        } finally {
+            mFindApplying = false;
+        }
+
+        if (mFindCount != null) {
+            if (mFindQuery != null && !mFindQuery.isValid()) {
+                mFindCount.setText(R.string.find_invalid_regex);
+            } else {
+                mFindCount.setText(getString(R.string.find_count, mFindIndex + 1, mFindMatches.size()));
+            }
+        }
+
+        if (scroll && current != null && current.position < mLogListAdapter.getItemCount()) {
+            // Leave the match a third of the way down, and stop following new
+            // lines so that it stays there.
+            RecyclerView list = findViewById(R.id.list);
+            mAutoscrollToBottom = false;
+            ((LinearLayoutManager) list.getLayoutManager())
+                    .scrollToPositionWithOffset(current.position, list.getHeight() / 3);
+        }
     }
 
     private void initSearchView(){

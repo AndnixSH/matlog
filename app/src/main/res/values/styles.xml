@@ -84,6 +84,29 @@
         <item name="windowNoTitle">true</item>
     </style>
 
+    <!-- The Cc / W / .* toggles of the find bar; selected ones take the accent colour in code. -->
+    <style name="FindToggle">
+        <item name="android:layout_width">wrap_content</item>
+        <item name="android:layout_height">match_parent</item>
+        <item name="android:gravity">center</item>
+        <item name="android:paddingStart">6dp</item>
+        <item name="android:paddingEnd">6dp</item>
+        <item name="android:textColor">?android:attr/textColorSecondary</item>
+        <item name="android:textSize">13sp</item>
+        <item name="android:textStyle">bold</item>
+        <item name="android:background">?attr/selectableItemBackgroundBorderless</item>
+        <item name="android:clickable">true</item>
+        <item name="android:focusable">true</item>
+    </style>
+
+    <style name="FindButton">
+        <item name="android:layout_width">36dp</item>
+        <item name="android:layout_height">match_parent</item>
+        <item name="android:background">?attr/selectableItemBackgroundBorderless</item>
+        <item name="android:scaleType">centerInside</item>
+        <item name="tint">?attr/colorControlNormal</item>
+    </style>
+
     <style name="PopupMenu" parent="Widget.AppCompat.PopupMenu">
         <item name="android:colorBackground">@color/primary_dark</item>
     </style>

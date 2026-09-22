@@ -138,4 +138,8 @@
     <color name="search_term_negated">#4D9E9E9E</color>
     <color name="search_term_invalid">#66F44336</color>
 
+    <!-- Find in log: every occurrence, and the one being pointed at. -->
+    <color name="find_match">#66FFEB3B</color>
+    <color name="find_match_current">#B3FF9800</color>
+
 </resources>

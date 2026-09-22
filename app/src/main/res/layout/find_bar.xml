@@ -1,0 +1,93 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+    "Find in log", after the find bar in Studio's Logcat panel: the text,
+    the match-case / whole-word / regex toggles, "current/total", previous,
+    next and close. Shown under the search box by the Find menu item or
+    Ctrl+F on a keyboard.
+-->
+<LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:app="http://schemas.android.com/apk/res-auto"
+    xmlns:tools="http://schemas.android.com/tools"
+    android:id="@+id/find_bar"
+    android:layout_width="match_parent"
+    android:layout_height="40dp"
+    android:layout_marginStart="8dp"
+    android:layout_marginEnd="8dp"
+    android:layout_marginBottom="8dp"
+    android:background="@drawable/search_background"
+    android:gravity="center_vertical"
+    android:orientation="horizontal">
+
+    <ImageView
+        android:layout_width="20dp"
+        android:layout_height="20dp"
+        android:layout_marginStart="12dp"
+        android:layout_marginEnd="8dp"
+        android:contentDescription="@null"
+        android:src="@drawable/ic_find_in_page"
+        app:tint="?attr/colorControlNormal" />
+
+    <EditText
+        android:id="@+id/find_text"
+        android:layout_width="0dp"
+        android:layout_height="match_parent"
+        android:layout_weight="1"
+        android:background="@null"
+        android:hint="@string/find_hint"
+        android:imeOptions="actionSearch"
+        android:importantForAutofill="no"
+        android:inputType="text|textNoSuggestions"
+        android:maxLines="1"
+        android:textSize="16sp" />
+
+    <TextView
+        android:id="@+id/find_case"
+        style="@style/FindToggle"
+        android:contentDescription="@string/find_match_case"
+        android:text="Cc"
+        tools:ignore="HardcodedText" />
+
+    <TextView
+        android:id="@+id/find_word"
+        style="@style/FindToggle"
+        android:contentDescription="@string/find_whole_words"
+        android:text="W"
+        tools:ignore="HardcodedText" />
+
+    <TextView
+        android:id="@+id/find_regex"
+        style="@style/FindToggle"
+        android:contentDescription="@string/find_regex"
+        android:text=".*"
+        tools:ignore="HardcodedText" />
+
+    <TextView
+        android:id="@+id/find_count"
+        android:layout_width="wrap_content"
+        android:layout_height="wrap_content"
+        android:gravity="center"
+        android:minWidth="40dp"
+        android:paddingStart="4dp"
+        android:paddingEnd="4dp"
+        android:textColor="?android:attr/textColorSecondary"
+        android:textSize="12sp"
+        tools:text="3/17" />
+
+    <ImageButton
+        android:id="@+id/find_prev"
+        style="@style/FindButton"
+        android:contentDescription="@string/find_previous"
+        android:src="@drawable/ic_expand_less_white_24dp" />
+
+    <ImageButton
+        android:id="@+id/find_next"
+        style="@style/FindButton"
+        android:contentDescription="@string/find_next"
+        android:src="@drawable/ic_expand_more_white_24dp" />
+
+    <ImageButton
+        android:id="@+id/find_close"
+        style="@style/FindButton"
+        android:contentDescription="@string/find_close"
+        android:src="@drawable/ic_clear" />
+</LinearLayout>
