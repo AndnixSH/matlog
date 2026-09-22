@@ -19,8 +19,9 @@ public class LogLine {
             // log level
             "(\\w)" +
                     "/" +
-                    // tag
-                    "([^(].+)" +
+                    // tag - lazily, so that a message containing "( 123): "
+                    // does not get pulled into the tag along with the real pid
+                    "([^(].+?)" +
                     "\\(\\s*" +
                     // pid
                     "(\\d+)" +

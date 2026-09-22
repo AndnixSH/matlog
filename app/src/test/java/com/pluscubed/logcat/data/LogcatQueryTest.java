@@ -450,6 +450,22 @@ public class LogcatQueryTest {
         assertEquals(ALPHA, matching("tag:KvqAlpha)"));
     }
 
+    // ---- highlighting ----
+
+    @Test
+    public void keyTermsAreHighlightedByKind() {
+        assertEquals("[0-7, 8-16 negated, 17-29 invalid]",
+                LogcatQuery.parse("tag:foo -tag:bar level:purple hello").getHighlights().toString());
+    }
+
+    @Test
+    public void highlightsCoverQuotedValuesAndStopAtBrackets() {
+        assertEquals("[0-15]", LogcatQuery.parse("tag:\"Kvq Space\"").getHighlights().toString());
+        assertEquals("[1-8]", LogcatQuery.parse("(tag:foo | bar)").getHighlights().toString());
+        assertEquals("[0-4]", LogcatQuery.parse("tag:").getHighlights().toString());
+        assertEquals("[]", LogcatQuery.parse("hello -1 http://x").getHighlights().toString());
+    }
+
     @Test
     public void strayPunctuationDoesNotThrow() {
         // Each of these is reachable by typing one character at a time, so the

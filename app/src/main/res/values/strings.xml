@@ -258,4 +258,32 @@
     <string name="shizuku_summary">Shizuku is running. Letting MatLog use it means logs are read with shell privileges, so you do not need root and Android will not ask you to confirm log access every time you open the app.</string>
     <string name="shizuku_grant">Grant</string>
     <string name="storage_folder_not_chosen">No folder chosen, so nothing was saved.</string>
+
+    <!-- Search box completions. The %1$s is a field name from the suggestion_field_* strings. -->
+    <string name="suggestion_field_tag">Log tag</string>
+    <string name="suggestion_field_message">Log message</string>
+    <string name="suggestion_field_package">Package name</string>
+    <string name="suggestion_field_process">Process name</string>
+    <string name="suggestion_field_line">Log line</string>
+    <string name="suggestion_key_contains">%1$s contains text</string>
+    <string name="suggestion_key_not_contains">%1$s does not contain text</string>
+    <string name="suggestion_key_regex">%1$s matches regex</string>
+    <string name="suggestion_key_not_regex">%1$s does not match regex</string>
+    <string name="suggestion_key_exact">%1$s is exactly text</string>
+    <string name="suggestion_key_not_exact">%1$s is not exactly text</string>
+    <string name="suggestion_level_key">Filter by minimum log level</string>
+    <string name="suggestion_level_value">Filter by %1$s or higher</string>
+    <string name="suggestion_is_key">Filter by type of log message</string>
+    <string name="suggestion_is_crash">Filter crashes</string>
+    <string name="suggestion_is_firebase">Filter messages produced by Firebase libraries</string>
+    <string name="suggestion_is_stacktrace">Filter stack traces</string>
+    <string name="suggestion_is_level">Filter level %1$s only</string>
+    <string name="suggestion_age_key">Filter by maximum age</string>
+    <string name="suggestion_age_30s">Filter logs from the past 30 seconds</string>
+    <string name="suggestion_age_5m">Filter logs from the past 5 minutes</string>
+    <string name="suggestion_age_3h">Filter logs from the past 3 hours</string>
+    <string name="suggestion_age_1d">Filter logs from the past day</string>
+    <string name="suggestion_name_key">Name this filter</string>
+    <string name="suggestion_pid_key">Process id is exactly a number</string>
+    <string name="suggestion_package_mine">Logs from this app</string>
 </resources>

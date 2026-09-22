@@ -5,10 +5,14 @@ import com.pluscubed.logcat.util.UtilLogger;
 import java.io.BufferedReader;
 import java.io.IOException;
 import java.io.InputStreamReader;
+import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.Collections;
 import java.util.HashMap;
+import java.util.List;
 import java.util.Map;
+import java.util.Set;
+import java.util.TreeSet;
 
 /**
  * Maps a log line's pid to the process that owns it, so the search box can
@@ -47,11 +51,42 @@ public final class ProcessNameHelper {
      */
     public static String packageNameFor(int pid) {
         String process = lookup(pid);
-        if (process == null) {
-            return null;
-        }
+        return process == null ? null : packageOf(process);
+    }
+
+    private static String packageOf(String process) {
         int colon = process.indexOf(':');
         return colon < 0 ? process : process.substring(0, colon);
+    }
+
+    /** True once we know we can list every process, i.e. root or Shizuku is in use. */
+    public static boolean canResolve() {
+        SuperUserHelper.AccessMode mode = SuperUserHelper.getAccessMode();
+        return mode == SuperUserHelper.AccessMode.ROOT || mode == SuperUserHelper.AccessMode.SHIZUKU;
+    }
+
+    /**
+     * The distinct process names known right now, sorted, without running
+     * {@code ps}. Empty until something has needed the names.
+     */
+    public static synchronized List<String> cachedProcessNames() {
+        return new ArrayList<>(new TreeSet<>(names.values()));
+    }
+
+    /** The packages among {@link #cachedProcessNames}: names with a dot, minus any ":process" suffix. */
+    public static synchronized List<String> cachedPackageNames() {
+        Set<String> packages = new TreeSet<>();
+        for (String name : names.values()) {
+            if (name.indexOf('.') >= 0) {
+                packages.add(packageOf(name));
+            }
+        }
+        return new ArrayList<>(packages);
+    }
+
+    /** Lists the processes now if the cache is stale. Runs {@code ps}, so not for the main thread. */
+    public static void warmUp() {
+        lookup(-1);
     }
 
     private static synchronized String lookup(int pid) {

@@ -133,5 +133,9 @@
     <color name="light_accent">#448AFF</color>
     <color name="light_pref_card">#E7E7E7</color>
 
+    <!-- Search box: tints behind key terms, translucent so they read on any theme. -->
+    <color name="search_term">#4D4CAF50</color>
+    <color name="search_term_negated">#4D9E9E9E</color>
+    <color name="search_term_invalid">#66F44336</color>
 
 </resources>

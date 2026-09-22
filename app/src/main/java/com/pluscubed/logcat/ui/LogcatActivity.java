@@ -6,6 +6,7 @@ import android.content.ClipboardManager;
 import android.content.Context;
 import android.content.DialogInterface;
 import android.content.Intent;
+import android.database.Cursor;
 import android.database.MatrixCursor;
 import android.net.Uri;
 import android.os.Bundle;
@@ -13,7 +14,10 @@ import android.os.Handler;
 import android.os.Looper;
 import android.provider.BaseColumns;
 import android.provider.DocumentsContract;
+import android.text.Editable;
+import android.text.Spanned;
 import android.text.TextUtils;
+import android.text.style.BackgroundColorSpan;
 import android.util.Log;
 import android.view.LayoutInflater;
 import android.view.Menu;
@@ -42,6 +46,7 @@ import androidx.appcompat.content.res.AppCompatResources;
 import androidx.appcompat.view.menu.MenuBuilder;
 import androidx.appcompat.widget.SearchView;
 import androidx.appcompat.widget.Toolbar;
+import androidx.core.content.ContextCompat;
 import androidx.core.content.FileProvider;
 import androidx.cursoradapter.widget.CursorAdapter;
 import androidx.cursoradapter.widget.SimpleCursorAdapter;
@@ -64,8 +69,10 @@ import com.pluscubed.logcat.data.LogFileAdapter;
 import com.pluscubed.logcat.data.LogLine;
 import com.pluscubed.logcat.data.LogLineAdapter;
 import com.pluscubed.logcat.data.LogLineViewHolder;
+import com.pluscubed.logcat.data.LogcatQuery;
 import com.pluscubed.logcat.data.SavedLog;
 import com.pluscubed.logcat.data.SearchCriteria;
+import com.pluscubed.logcat.data.SearchSuggestions;
 import com.pluscubed.logcat.data.SendLogDetails;
 import com.pluscubed.logcat.data.SortedFilterArrayAdapter;
 import com.pluscubed.logcat.db.CatlogDBHelper;
@@ -75,6 +82,7 @@ import com.pluscubed.logcat.helper.DialogHelper;
 import com.pluscubed.logcat.helper.DmesgHelper;
 import com.pluscubed.logcat.helper.LogStorage;
 import com.pluscubed.logcat.helper.PreferenceHelper;
+import com.pluscubed.logcat.helper.ProcessNameHelper;
 import com.pluscubed.logcat.helper.SaveLogHelper;
 import com.pluscubed.logcat.helper.ServiceHelper;
 import com.pluscubed.logcat.helper.ShizukuHelper;
@@ -90,12 +98,13 @@ import com.pluscubed.logcat.util.UtilLogger;
 
 import java.io.File;
 import java.util.ArrayList;
+import java.util.Collection;
 import java.util.Collections;
-import java.util.HashSet;
 import java.util.LinkedList;
 import java.util.List;
 import java.util.Locale;
 import java.util.Set;
+import java.util.concurrent.CopyOnWriteArraySet;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 
@@ -130,8 +139,43 @@ public class LogcatActivity extends BaseActivity implements FilterListener, LogL
     private boolean partialSelectMode;
     private List<LogLine> partiallySelectedLogLines = new ArrayList<>(2);
 
-    private Set<String> mSearchSuggestionsSet = new HashSet<>();
-    private CursorAdapter mSearchSuggestionsAdapter;
+    /**
+     * Everything ever offered as a plain suggestion: tags seen in the log and
+     * saved filters. Copy-on-write because the suggestion filter reads it on
+     * its own thread while log lines add to it on this one.
+     */
+    private Set<String> mSearchSuggestionsSet = new CopyOnWriteArraySet<>();
+    /** Only the tags seen in the log, for completing {@code tag:} values. */
+    private final Set<String> mSeenTags = new CopyOnWriteArraySet<>();
+    private SimpleCursorAdapter mSearchSuggestionsAdapter;
+    private SearchView.SearchAutoComplete mSearchAutoComplete;
+    /**
+     * The query text right after a value was completed. Studio closes its
+     * popup then; without this the key list would pop straight back up over
+     * the term just finished.
+     */
+    private volatile String mSuppressSuggestionsFor;
+    private final SearchSuggestions.Names mSuggestionNames = new SearchSuggestions.Names() {
+        @Override
+        public Collection<String> tags() {
+            return mSeenTags;
+        }
+
+        @Override
+        public Collection<String> packages() {
+            return ProcessNameHelper.cachedPackageNames();
+        }
+
+        @Override
+        public Collection<String> processes() {
+            return ProcessNameHelper.cachedProcessNames();
+        }
+
+        @Override
+        public Collection<String> history() {
+            return mSearchSuggestionsSet;
+        }
+    };
 
     private String mCurrentlyOpenLog = null;
 
@@ -260,11 +304,26 @@ public class LogcatActivity extends BaseActivity implements FilterListener, LogL
         log.d("initial collapsed mode is %s", mCollapsedMode);
 
         mSearchSuggestionsAdapter = new SimpleCursorAdapter(this,
-                R.layout.list_item_dropdown,
+                R.layout.list_item_suggestion,
                 null,
-                new String[]{"suggestion"},
-                new int[]{android.R.id.text1},
+                new String[]{COL_SUGGESTION, COL_HINT},
+                new int[]{android.R.id.text1, android.R.id.text2},
                 CursorAdapter.FLAG_REGISTER_CONTENT_OBSERVER);
+        // The search field filters its adapter on a worker thread after every
+        // edit; letting that filter build the rows keeps them in step with the
+        // text, where swapping the cursor from here as well raced with it.
+        mSearchSuggestionsAdapter.setFilterQueryProvider(this::suggestionsFor);
+        mSearchSuggestionsAdapter.setViewBinder((view, cursor, columnIndex) -> {
+            if (view.getId() != android.R.id.text2) {
+                return false;
+            }
+            // A plain suggestion, such as a tag name, has nothing to explain.
+            String hint = cursor.getString(columnIndex);
+            TextView hintView = (TextView) view;
+            hintView.setText(hint);
+            hintView.setVisibility(TextUtils.isEmpty(hint) ? View.GONE : View.VISIBLE);
+            return true;
+        });
 
         mAppBar.replaceMenu(R.menu.menu_main);
         flexOptionsMenu(mAppBar.getMenu());
@@ -543,28 +602,100 @@ public class LogcatActivity extends BaseActivity implements FilterListener, LogL
         cancelPartialSelect();
     }
 
-    private void populateSuggestionsAdapter(String query) {
-        final MatrixCursor c = new MatrixCursor(new String[]{BaseColumns._ID, "suggestion"});
-        List<String> suggestionsForQuery = getSuggestionsForQuery(query);
-        for (int i = 0, suggestionsForQuerySize = suggestionsForQuery.size(); i < suggestionsForQuerySize; i++) {
-            String suggestion = suggestionsForQuery.get(i);
-            c.addRow(new Object[]{i, suggestion});
+    /** Columns of the suggestion cursor; the last two are read back when a row is tapped. */
+    private static final String COL_SUGGESTION = "suggestion";
+    private static final String COL_HINT = "hint";
+    private static final String COL_REPLACE_START = "replace_start";
+    private static final String COL_REPLACE_END = "replace_end";
+
+    /**
+     * The dropdown's rows for {@code constraint}, the whole query: completions
+     * for its last term, Studio style. Runs on the adapter's filter thread,
+     * which is also where {@code ps} may run when {@code process:} or
+     * {@code package:} values are wanted.
+     */
+    @WorkerThread
+    private Cursor suggestionsFor(CharSequence constraint) {
+        String text = StringUtil.nullToEmpty(constraint);
+        MatrixCursor c = new MatrixCursor(new String[]{
+                BaseColumns._ID, COL_SUGGESTION, COL_HINT, COL_REPLACE_START, COL_REPLACE_END});
+        if (text.equals(mSuppressSuggestionsFor)) {
+            return c;
         }
-        mSearchSuggestionsAdapter.changeCursor(c);
+        String lower = text.toLowerCase(Locale.ROOT);
+        if ((lower.contains("process") || lower.contains("package")) && ProcessNameHelper.canResolve()) {
+            ProcessNameHelper.warmUp();
+        }
+        List<SearchSuggestions.Suggestion> suggestions =
+                SearchSuggestions.forCaret(text, text.length(), mSuggestionNames);
+        for (int i = 0; i < suggestions.size(); i++) {
+            SearchSuggestions.Suggestion suggestion = suggestions.get(i);
+            c.addRow(new Object[]{i, suggestion.completion, hintFor(suggestion),
+                    suggestion.replaceStart, suggestion.replaceEnd});
+        }
+        return c;
     }
 
-    private List<String> getSuggestionsForQuery(String query) {
-        List<String> suggestions = new ArrayList<>(mSearchSuggestionsSet);
-        Collections.sort(suggestions, String.CASE_INSENSITIVE_ORDER);
-        List<String> actualSuggestions = new ArrayList<>();
-        if (query != null) {
-            for (String suggestion : suggestions) {
-                if (suggestion.toLowerCase().startsWith(query.toLowerCase())) {
-                    actualSuggestions.add(suggestion);
-                }
-            }
+    private String hintFor(SearchSuggestions.Suggestion suggestion) {
+        if (suggestion.hintRes == 0) {
+            return "";
         }
-        return actualSuggestions;
+        String argument = suggestion.hintArgRes != 0 ? getString(suggestion.hintArgRes) : suggestion.hintArg;
+        return argument == null ? getString(suggestion.hintRes) : getString(suggestion.hintRes, argument);
+    }
+
+    /** Puts the tapped suggestion into the query in place of the term it completes. */
+    private void applySuggestion(int position) {
+        Cursor c = mSearchSuggestionsAdapter.getCursor();
+        if (c == null || !c.moveToPosition(position)) {
+            return;
+        }
+        String completion = c.getString(c.getColumnIndexOrThrow(COL_SUGGESTION));
+        int start = c.getInt(c.getColumnIndexOrThrow(COL_REPLACE_START));
+        int end = c.getInt(c.getColumnIndexOrThrow(COL_REPLACE_END));
+        String text = searchView.getQuery().toString();
+        if (start < 0 || start > end || end > text.length()) {
+            return; // the rows belong to an older text
+        }
+        String completed = text.substring(0, start) + completion + text.substring(end);
+        // A finished value ends with a space; a key does not, and wants its
+        // values offered next.
+        mSuppressSuggestionsFor = completion.endsWith(" ") ? completed : null;
+        searchView.setQuery(completed, false);
+    }
+
+    /** Tints the key terms in the search box the way Studio's filter field does. */
+    private void highlightSearchTerms() {
+        if (mSearchAutoComplete == null) {
+            return;
+        }
+        Editable text = mSearchAutoComplete.getText();
+        for (TermSpan span : text.getSpans(0, text.length(), TermSpan.class)) {
+            text.removeSpan(span);
+        }
+        for (LogcatQuery.Highlight highlight : LogcatQuery.parse(text).getHighlights()) {
+            int color;
+            switch (highlight.kind) {
+                case LogcatQuery.Highlight.NEGATED:
+                    color = R.color.search_term_negated;
+                    break;
+                case LogcatQuery.Highlight.INVALID:
+                    color = R.color.search_term_invalid;
+                    break;
+                default:
+                    color = R.color.search_term;
+                    break;
+            }
+            text.setSpan(new TermSpan(ContextCompat.getColor(this, color)),
+                    highlight.start, highlight.end, Spanned.SPAN_EXCLUSIVE_EXCLUSIVE);
+        }
+    }
+
+    /** Our own span type, so re-highlighting can remove exactly what it added. */
+    private static final class TermSpan extends BackgroundColorSpan {
+        TermSpan(int color) {
+            super(color);
+        }
     }
 
     /**
@@ -1650,6 +1781,9 @@ public class LogcatActivity extends BaseActivity implements FilterListener, LogL
 
         if (!StringUtil.isEmptyOrWhitespaceOnly(logLine.getTag())) {
             String trimmed = logLine.getTag().trim();
+            if (mSeenTags.size() < MAX_NUM_SUGGESTIONS) {
+                mSeenTags.add(trimmed);
+            }
             addToAutocompleteSuggestions(trimmed);
         }
     }
@@ -1658,7 +1792,11 @@ public class LogcatActivity extends BaseActivity implements FilterListener, LogL
         if (mSearchSuggestionsSet.size() < MAX_NUM_SUGGESTIONS
                 && !mSearchSuggestionsSet.contains(trimmed)) {
             mSearchSuggestionsSet.add(trimmed);
-            populateSuggestionsAdapter(mSearchingString);
+            // Only refresh a list that is showing. Rebuilding a hidden one
+            // would pop the dropdown up while the user is typing.
+            if (mSearchAutoComplete != null && mSearchAutoComplete.isPopupShowing()) {
+                mSearchSuggestionsAdapter.getFilter().filter(mSearchAutoComplete.getText());
+            }
         }
     }
 
@@ -1848,6 +1986,11 @@ public class LogcatActivity extends BaseActivity implements FilterListener, LogL
 
     private void initSearchView(){
         //used to workaround issue where the search text is cleared on expanding the SearchView
+        mSearchAutoComplete = searchView.findViewById(androidx.appcompat.R.id.search_src_text);
+        if (mSearchAutoComplete != null) {
+            // Suggest from the first character; the default waits for two.
+            mSearchAutoComplete.setThreshold(1);
+        }
         searchView.setSuggestionsAdapter(mSearchSuggestionsAdapter);
         searchView.setOnSuggestionListener(new SearchView.OnSuggestionListener() {
             @Override
@@ -1857,11 +2000,8 @@ public class LogcatActivity extends BaseActivity implements FilterListener, LogL
 
             @Override
             public boolean onSuggestionClick(int position) {
-                List<String> suggestions = getSuggestionsForQuery(mSearchingString);
-                if (!suggestions.isEmpty()) {
-                    searchView.setQuery(suggestions.get(position), true);
-                }
-                return false;
+                applySuggestion(position);
+                return true;
             }
         });
         searchView.setOnQueryTextListener(new SearchView.OnQueryTextListener() {
@@ -1872,10 +2012,10 @@ public class LogcatActivity extends BaseActivity implements FilterListener, LogL
 
             @Override
             public boolean onQueryTextChange(String newText) {
+                highlightSearchTerms();
                 if (!mDynamicallyEnteringSearchText) {
                     log.d("filtering: %s", newText);
                     search(newText);
-                    populateSuggestionsAdapter(newText);
                 }
                 mDynamicallyEnteringSearchText = false;
                 return false;

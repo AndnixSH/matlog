@@ -9,6 +9,7 @@ import com.pluscubed.logcat.util.StringUtil;
 
 import java.util.ArrayList;
 import java.util.Calendar;
+import java.util.Collections;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Locale;
@@ -78,10 +79,12 @@ public final class LogcatQuery {
 
     private final Node root;
     private final String label;
+    private final List<Highlight> highlights;
 
-    private LogcatQuery(Node root, String label) {
+    private LogcatQuery(Node root, String label, List<Highlight> highlights) {
         this.root = root;
         this.label = label;
+        this.highlights = highlights;
     }
 
     /**
@@ -91,7 +94,7 @@ public final class LogcatQuery {
     public static LogcatQuery parse(CharSequence input) {
         Parser parser = new Parser(StringUtil.nullToEmpty(input));
         Node root = parser.parse();
-        return new LogcatQuery(root, parser.label);
+        return new LogcatQuery(root, parser.label, Collections.unmodifiableList(parser.highlights));
     }
 
     public boolean isEmpty() {
@@ -105,6 +108,39 @@ public final class LogcatQuery {
     /** The value of the last {@code name:} term, or null. Names a saved filter. */
     public String getLabel() {
         return label;
+    }
+
+    /**
+     * Where the key terms sit in the input, in order, so the search box can
+     * mark them the way Studio does. Bare text and operators are not listed.
+     */
+    public List<Highlight> getHighlights() {
+        return highlights;
+    }
+
+    /** A key term's span in the input and how it should be shown. */
+    public static final class Highlight {
+        /** {@code tag:foo}: an ordinary term. */
+        public static final int KEY = 0;
+        /** {@code -tag:foo}: a negated term. */
+        public static final int NEGATED = 1;
+        /** {@code level:purple}: a term whose value cannot match anything. */
+        public static final int INVALID = 2;
+
+        public final int start;
+        public final int end;
+        public final int kind;
+
+        Highlight(int start, int end, int kind) {
+            this.start = start;
+            this.end = end;
+            this.kind = kind;
+        }
+
+        @Override
+        public String toString() {
+            return start + "-" + end + (kind == NEGATED ? " negated" : kind == INVALID ? " invalid" : "");
+        }
     }
 
     // ------------------------------------------------------------------
@@ -536,6 +572,10 @@ public final class LogcatQuery {
         private int index;
 
         String label;
+        final List<Highlight> highlights = new ArrayList<>();
+
+        /** The key of the term {@link #readTerm} last read, or null for bare text. */
+        private Key lastKey;
 
         Parser(String src) {
             this.src = src;
@@ -568,7 +608,15 @@ public final class LogcatQuery {
                     pos++;
                     result.add(new Token(c == '&' ? TOKEN_AND : TOKEN_OR, null));
                 } else {
-                    result.add(new Token(TOKEN_TERM, readTerm()));
+                    int start = pos;
+                    Node term = readTerm();
+                    if (lastKey != null) {
+                        int kind = term instanceof InvalidNode ? Highlight.INVALID
+                                : lastKey.negated ? Highlight.NEGATED
+                                : Highlight.KEY;
+                        highlights.add(new Highlight(start, pos, kind));
+                    }
+                    result.add(new Token(TOKEN_TERM, term));
                 }
             }
         }
@@ -580,6 +628,7 @@ public final class LogcatQuery {
 
         private Node readTerm() {
             Key key = readKey();
+            lastKey = key;
             if (key == null) {
                 return readBareValue();
             }
