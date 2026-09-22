@@ -15,6 +15,10 @@ import com.pluscubed.logcat.R;
  */
 
 public abstract class ThemeWrapper {
+
+    /** Until the user picks one, the app follows the system's day/night setting. Matches settings.xml. */
+    private static final Theme DEFAULT_THEME = Theme.AUTO;
+
     /**
      * Apply theme to an Activity
      */
@@ -45,7 +49,7 @@ public abstract class ThemeWrapper {
     public static Theme resolveTheme(Context context) {
         Theme[] values = Theme.values();
         int index = getThemeIndex();
-        Theme selected = (index >= 0 && index < values.length) ? values[index] : Theme.LIGHT;
+        Theme selected = (index >= 0 && index < values.length) ? values[index] : DEFAULT_THEME;
 
         if (selected != Theme.AUTO) {
             return selected;
@@ -166,11 +170,11 @@ public abstract class ThemeWrapper {
     private static int getThemeIndex() {
         try {
             return Integer.parseInt(App.get().getPreferences()
-                    .getString("ui.theme", String.valueOf(Theme.LIGHT.ordinal())));
+                    .getString("ui.theme", String.valueOf(DEFAULT_THEME.ordinal())));
         } catch (NumberFormatException e) {
             // A corrupt preference should not take down every activity that
             // calls applyTheme(); fall back to the default.
-            return Theme.LIGHT.ordinal();
+            return DEFAULT_THEME.ordinal();
         }
     }
 

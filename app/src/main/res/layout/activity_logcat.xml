@@ -72,6 +72,12 @@
         on, BottomAppBar reserves navigation-bar padding inside its own fixed
         actionBarSize height anyway, which squeezes the menu row and clips the
         bottom off its icons.
+
+        hideOnScroll is off as well. Sliding the bar away on scroll moved the
+        anchored record button only by the bar's height, so its upper half
+        stayed poking out of the bottom edge - most visibly on a tablet, where
+        it looked cut off by the taskbar. The controls of a log viewer are
+        better always reachable anyway.
     -->
     <com.google.android.material.bottomappbar.BottomAppBar
         android:id="@+id/bottom_appbar"
@@ -81,10 +87,9 @@
         app:fabCradleRoundedCornerRadius="4dp"
         app:popupTheme="?popupMenuStyle"
         app:backgroundTint="?colorPrimary"
-        app:hideOnScroll="true"
+        app:hideOnScroll="false"
         app:elevation="4dp"
-        app:paddingBottomSystemWindowInsets="false"
-        app:layout_scrollFlags="scroll|enterAlways"/>
+        app:paddingBottomSystemWindowInsets="false"/>
 
     <!--
         No android:layout_gravity here on purpose. BottomAppBar only seats an
