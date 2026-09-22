@@ -1621,17 +1621,16 @@ public class LogcatActivity extends BaseActivity implements FilterListener, LogL
 
     private void openLogFile(final String filename) {
         // The live log appends to the same list this file is loaded into, so
-        // it has to be stopped first - and the file opened only once it has
-        // drained, or the two streams get spliced together. This is what made
-        // a finished recording "reset and keep scrolling live".
+        // it has to be stopped first. This is what made a finished recording
+        // "reset and keep scrolling live". A cancelled task drops whatever its
+        // reader still delivers, so the file is loaded straight away rather
+        // than after the reader has died: through some su implementations
+        // the logcat process outlives the kill and the reader never returns.
         if (mTask != null) {
-            mTask.unPause();
-            mTask.setOnFinished(() -> loadLogFile(filename));
-            mTask.killReader();
+            mTask.cancel();
             mTask = null;
-        } else {
-            loadLogFile(filename);
         }
+        loadLogFile(filename);
     }
 
     private void loadLogFile(final String filename) {
@@ -2013,6 +2012,12 @@ public class LogcatActivity extends BaseActivity implements FilterListener, LogL
 
         @SuppressLint("NotifyDataSetChanged")
         private void onProgressUpdate(LogLine... values) {
+            if (mCancelled) {
+                // The list belongs to something else now (a saved log, or the
+                // next live task); lines still in flight from this reader
+                // must not be spliced into it.
+                return;
+            }
 
             if (!mFirstLineReceived) {
                 mFirstLineReceived = true;

@@ -326,6 +326,13 @@ public class SuperUserHelper {
             destroyPid(relatedPid);
         }
 
+        // The pids above are the su client and its children. SuperSU and
+        // Magisk run the actual command from their daemon, so logcat is not a
+        // child of the client at all and survives the kills, holding the
+        // write end of our pipe. Destroying the Java process closes our end:
+        // the reader thread gets EOF instead of blocking for ever, and the
+        // orphaned logcat dies of SIGPIPE on its next write.
+        process.destroy();
     }
 
     private static void destroyPid(int pid) {
