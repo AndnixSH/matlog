@@ -1,6 +1,7 @@
 package com.pluscubed.logcat.data;
 
 import android.os.Process;
+import android.util.Log;
 
 import com.pluscubed.logcat.helper.ProcessNameHelper;
 import com.pluscubed.logcat.util.LogLineAdapterUtil;
@@ -8,42 +9,65 @@ import com.pluscubed.logcat.util.StringUtil;
 
 import java.util.ArrayList;
 import java.util.Calendar;
+import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Locale;
+import java.util.Map;
 import java.util.regex.Pattern;
 import java.util.regex.PatternSyntaxException;
 
 /**
  * Android Studio's logcat query language, for the search box.
  *
- * <p>Fields are {@code tag}, {@code message}, {@code line}, {@code package},
- * {@code process}, {@code level}, {@code age} and {@code is}; {@code pid} is a
- * MatLog extra, and {@code name} is accepted and ignored because it only names
- * a saved filter. A token whose text before the colon is not one of those is
- * searched for as plain text, so "http://example.com" and clock times stay
- * searchable.
+ * <p>This follows what Studio's parser actually does (LogcatFilter.flex and
+ * LogcatFilterParser.kt in the logcat module), checked against a running
+ * Studio, rather than the prose on developer.android.com, which differs from
+ * the implementation in places.
  *
- * <p>Terms are joined with {@code &} and {@code |} and grouped with
- * parentheses; {@code &} binds tighter. Terms written next to each other with
- * no operator are combined the way Studio combines them: several non-negated
- * terms sharing a field are ORed, everything else is ANDed. Adjacent bare
- * words form a single phrase, so {@code foo bar} looks for the text "foo bar".
+ * <p><b>Bare text.</b> A word on its own is looked for anywhere in the line as
+ * Studio formats it - timestamp, pid, tag, level letter and message - so a pid
+ * or a clock time is searchable. Each word is its own term: {@code foo bar}
+ * finds lines containing both, in any order. To look for a phrase, quote it:
+ * {@code "foo bar"} or {@code 'foo bar'}. A backslash escapes a space, colon,
+ * quote or backslash in an unquoted value.
  *
- * <p>Text fields match case-insensitively as substrings, or as a regular
- * expression when the field is written {@code tag~:} - those are case
- * sensitive, so add {@code (?i)} for a case-insensitive one. Any term can be
- * negated by putting {@code -} in front of it, including {@code level} and
- * bare phrases.
+ * <p><b>Keys.</b> {@code tag:}, {@code message:}, {@code line:},
+ * {@code package:} and {@code process:} match their field as a
+ * case-insensitive substring. Written {@code tag~:} they match as a
+ * case-insensitive regular expression, and written {@code tag=:} the whole
+ * field has to equal the value. A leading dash negates: {@code -tag:Foo},
+ * {@code -tag~:Fo+}. A space after the colon is fine: {@code tag: Foo}.
  *
- * <p>{@code ( ) & |} are always structural, so a value needing one of them, a
- * space, or a leading dash has to be quoted: {@code tag~:"My (Tag)"}.
+ * <p>{@code level:} matches that severity or worse; {@code is:} takes
+ * {@code crash}, {@code stacktrace}, {@code firebase} or a level name for an
+ * exact-level match; {@code age:} takes {@code 30s}, {@code 5m}, {@code 3h} or
+ * {@code 1d}; {@code name:} names a saved filter and constrains nothing. Those
+ * cannot be negated - Studio treats {@code -level:error} as plain text, and so
+ * does this. {@code pid:} is a MatLog extra.
  *
- * <p>Studio resolves the tail of a whitespace-separated clause at the lowest
- * precedence, so {@code foo bar tag:a | tag:b} means
- * {@code 'foo bar' & (tag:a | tag:b)} there. Here the phrase is combined in
- * place instead, which is the same answer for every query whose bare phrase is
- * not itself mixed with {@code |}; the rule Studio documents is surprising
- * enough that predictability seemed worth more than the letter of it.
+ * <p><b>Combining.</b> {@code &} and {@code |} join terms when they stand on
+ * their own; inside a value they are ordinary characters, so
+ * {@code tag~:foo|bar} is one regular expression. {@code &} binds tighter than
+ * {@code |}; parentheses group. Terms merely separated by whitespace are
+ * combined the way Studio combines them: non-negated terms with the same key
+ * are ORed wherever they appear, and everything else is ANDed, at the lowest
+ * precedence. So {@code foo tag:a | tag:b} is {@code foo & (tag:a | tag:b)},
+ * and {@code tag:a level:e tag:b} is {@code (tag:a | tag:b) & level:e}.
+ *
+ * <p><b>Where this is looser than Studio.</b> Studio answers any syntax slip
+ * by searching for the whole box as literal text. Here, because the list
+ * filters as you type, a key with no value yet is ignored, an unclosed quote
+ * or bracket is read as far as it goes, several terms may sit inside one pair
+ * of brackets, and {@code level:ERROR)} closes the bracket (Studio swallows it
+ * into the value). Level names may also be abbreviated to their first letter.
+ * Anything that is a valid Studio query means the same thing here.
+ *
+ * <p><b>Where it has to differ.</b> {@code package:mine} means this app, since
+ * there is no project; {@code -package:mine} means every other app. Studio
+ * sees a crash as one multi-line entry, so {@code is:crash} here takes every
+ * line of an {@code E/AndroidRuntime} or {@code F/DEBUG} / {@code F/libc}
+ * message rather than only the first. {@code package:} and {@code process:}
+ * need root or Shizuku to be answerable at all.
  */
 public final class LogcatQuery {
 
@@ -65,7 +89,9 @@ public final class LogcatQuery {
      * that could be read, so typing one character at a time stays usable.
      */
     public static LogcatQuery parse(CharSequence input) {
-        return new Parser(StringUtil.nullToEmpty(input)).parse();
+        Parser parser = new Parser(StringUtil.nullToEmpty(input));
+        Node root = parser.parse();
+        return new LogcatQuery(root, parser.label);
     }
 
     public boolean isEmpty() {
@@ -73,67 +99,169 @@ public final class LogcatQuery {
     }
 
     public boolean matches(LogLine line) {
-        return root == null || root.matches(line);
+        return root == null || root.matches(new Subject(line));
     }
 
-    /** The value of a {@code name:} term, or null. Names a saved filter. */
+    /** The value of the last {@code name:} term, or null. Names a saved filter. */
     public String getLabel() {
         return label;
+    }
+
+    // ------------------------------------------------------------------
+    // The line being matched
+    // ------------------------------------------------------------------
+
+    /**
+     * One log line with the strings a query can read, each computed at most
+     * once however many terms look at it.
+     */
+    private static final class Subject {
+        private final LogLine line;
+        private String fullLine;
+        private String tag;
+        private boolean timestampParsed;
+        private long timestamp;
+
+        Subject(LogLine line) {
+            this.line = line;
+        }
+
+        /** The line as MatLog prints it: timestamp, level, tag, pid and message. */
+        String fullLine() {
+            if (fullLine == null) {
+                fullLine = StringUtil.nullToEmpty(line.getOriginalLine());
+            }
+            return fullLine;
+        }
+
+        /** {@code logcat -v time} pads short tags with spaces; those are not part of the tag. */
+        String tag() {
+            if (tag == null) {
+                String raw = line.getTag();
+                tag = raw == null ? "" : raw.trim();
+            }
+            return tag;
+        }
+
+        String message() {
+            return StringUtil.nullToEmpty(line.getLogOutput());
+        }
+
+        String packageName() {
+            return StringUtil.nullToEmpty(ProcessNameHelper.packageNameFor(line.getProcessId()));
+        }
+
+        String processName() {
+            return StringUtil.nullToEmpty(ProcessNameHelper.processNameFor(line.getProcessId()));
+        }
+
+        int level() {
+            return line.getLogLevel();
+        }
+
+        int pid() {
+            return line.getProcessId();
+        }
+
+        /** Millis since the epoch, or -1 when the line carries no readable timestamp. */
+        long timestampMillis(long now) {
+            if (!timestampParsed) {
+                timestamp = parseTimestamp(line.getTimestamp(), now);
+                timestampParsed = true;
+            }
+            return timestamp;
+        }
+    }
+
+    /** The text fields a key can name. {@code IMPLICIT_LINE} is a bare word. */
+    private enum Field {
+        TAG("tag"),
+        MESSAGE("message"),
+        LINE("line"),
+        PACKAGE("package"),
+        PROCESS("process"),
+        IMPLICIT_LINE(null);
+
+        final String key;
+
+        Field(String key) {
+            this.key = key;
+        }
+
+        String read(Subject subject) {
+            switch (this) {
+                case TAG:
+                    return subject.tag();
+                case MESSAGE:
+                    return subject.message();
+                case PACKAGE:
+                    return subject.packageName();
+                case PROCESS:
+                    return subject.processName();
+                default:
+                    return subject.fullLine();
+            }
+        }
+
+        static Field forKey(String key) {
+            for (Field field : values()) {
+                if (key.equals(field.key)) {
+                    return field;
+                }
+            }
+            return null;
+        }
     }
 
     // ------------------------------------------------------------------
     // Evaluation
     // ------------------------------------------------------------------
 
-    private interface Node {
-        boolean matches(LogLine line);
+    private abstract static class Node {
+        abstract boolean matches(Subject subject);
+
+        /**
+         * Non-null for a term that Studio ORs with other whitespace-separated
+         * terms carrying the same key. Negated terms, bare words and anything
+         * built with an operator stay unique and are ANDed.
+         */
+        String groupKey() {
+            return null;
+        }
     }
 
-    /** A term with a field name, so same-field terms can be ORed together. */
-    private interface Term extends Node {
-        String key();
-
-        boolean negated();
-    }
-
-    private static boolean check(boolean matched, boolean negated) {
-        return negated != matched;
-    }
-
-    private static final Node MATCH_ALL = line -> true;
+    private static final Node MATCH_ALL = new Node() {
+        @Override
+        boolean matches(Subject subject) {
+            return true;
+        }
+    };
 
     /**
      * A term whose value made no sense, such as {@code level:purple} or
-     * {@code age:5x}. It takes part in grouping like any other field term but
-     * never matches, so a typo empties the list and is visible rather than
-     * being silently dropped.
+     * {@code age:5x}. It groups like the term it was meant to be but never
+     * matches, so a typo empties the list and is visible rather than being
+     * silently dropped.
      */
-    private static final class InvalidTerm implements Term {
-        private final String field;
-        private final boolean negated;
+    private static final class InvalidNode extends Node {
+        private final String key;
 
-        InvalidTerm(String field, boolean negated) {
-            this.field = field;
-            this.negated = negated;
+        InvalidNode(String key) {
+            this.key = key;
         }
 
         @Override
-        public String key() {
-            return field;
+        boolean matches(Subject subject) {
+            return false;
         }
 
         @Override
-        public boolean negated() {
-            return negated;
-        }
-
-        @Override
-        public boolean matches(LogLine line) {
-            return check(false, negated);
+        String groupKey() {
+            return key;
         }
     }
 
-    private static final class AndNode implements Node {
+    private static final class AndNode extends Node {
         private final List<Node> children;
 
         AndNode(List<Node> children) {
@@ -141,9 +269,9 @@ public final class LogcatQuery {
         }
 
         @Override
-        public boolean matches(LogLine line) {
+        boolean matches(Subject subject) {
             for (int i = 0; i < children.size(); i++) {
-                if (!children.get(i).matches(line)) {
+                if (!children.get(i).matches(subject)) {
                     return false;
                 }
             }
@@ -151,7 +279,7 @@ public final class LogcatQuery {
         }
     }
 
-    private static final class OrNode implements Node {
+    private static final class OrNode extends Node {
         private final List<Node> children;
 
         OrNode(List<Node> children) {
@@ -159,9 +287,9 @@ public final class LogcatQuery {
         }
 
         @Override
-        public boolean matches(LogLine line) {
+        boolean matches(Subject subject) {
             for (int i = 0; i < children.size(); i++) {
-                if (children.get(i).matches(line)) {
+                if (children.get(i).matches(subject)) {
                     return true;
                 }
             }
@@ -169,240 +297,173 @@ public final class LogcatQuery {
         }
     }
 
-    /**
-     * A bare search phrase. Also matches the pid when the phrase is a number,
-     * which is how the search box has always found a process by pid.
-     */
-    private static final class PhraseNode implements Node {
-        private final String needle;
-        private final int pid;
+    /** A text field compared as a substring, exactly, or against a regular expression. */
+    private static final class TextNode extends Node {
+        static final int CONTAINS = 0;
+        static final int EXACT = 1;
+        static final int REGEX = 2;
+
+        private final Field field;
+        private final int mode;
         private final boolean negated;
-
-        PhraseNode(String needle, boolean negated) {
-            this.needle = needle;
-            this.negated = negated;
-            int parsed = -1;
-            try {
-                parsed = Integer.parseInt(needle);
-            } catch (NumberFormatException ignored) {
-            }
-            this.pid = parsed;
-        }
-
-        @Override
-        public boolean matches(LogLine line) {
-            boolean found = pid != -1 && line.getProcessId() == pid
-                    || (line.getTag() != null && StringUtil.containsIgnoreCase(line.getTag(), needle))
-                    || (line.getLogOutput() != null
-                    && StringUtil.containsIgnoreCase(line.getLogOutput(), needle));
-            return check(found, negated);
-        }
-    }
-
-    /** tag, message, line, package and process all read a string and compare it. */
-    private static final class TextTerm implements Term {
-        private final String field;
-        private final boolean negated;
-        private final String needle;
+        private final String value;
         private final Pattern pattern;
 
-        TextTerm(String field, boolean negated, String value, boolean regex) {
+        TextNode(Field field, int mode, boolean negated, String value) {
             this.field = field;
+            this.mode = mode;
             this.negated = negated;
-            this.needle = regex ? null : value;
+            this.value = value;
             Pattern compiled = null;
-            if (regex) {
+            if (mode == REGEX) {
                 try {
-                    compiled = Pattern.compile(value);
+                    // Studio's regexes ignore case unless its "match case"
+                    // toggle is on; the search box has no such toggle.
+                    compiled = Pattern.compile(value, Pattern.CASE_INSENSITIVE | Pattern.UNICODE_CASE);
                 } catch (PatternSyntaxException e) {
-                    // Mid-typing almost always: a half-written regex simply
-                    // matches nothing rather than wiping the list.
+                    // Mid-typing almost always. Studio would fall back to a
+                    // literal search of the whole box; matching nothing is
+                    // the same empty list without the surprise.
                     compiled = null;
                 }
             }
             this.pattern = compiled;
         }
 
-        @Override
-        public String key() {
-            return field;
+        /** A regular expression the caller compiled, for {@code is:firebase}. */
+        TextNode(Field field, Pattern pattern) {
+            this.field = field;
+            this.mode = REGEX;
+            this.negated = false;
+            this.value = pattern.pattern();
+            this.pattern = pattern;
         }
 
         @Override
-        public boolean negated() {
-            return negated;
-        }
-
-        @Override
-        public boolean matches(LogLine line) {
-            String subject = subject(line);
-            if (subject == null) {
-                return check(false, negated);
-            }
-            boolean found = pattern != null
-                    ? pattern.matcher(subject).find()
-                    : StringUtil.containsIgnoreCase(subject, needle);
-            return check(found, negated);
-        }
-
-        private String subject(LogLine line) {
-            switch (field) {
-                case "tag":
-                    return line.getTag();
-                case "message":
-                    return line.getLogOutput();
-                case "line":
-                    return line.getOriginalLine();
-                case "package":
-                    return ProcessNameHelper.packageNameFor(line.getProcessId());
-                case "process":
-                    return ProcessNameHelper.processNameFor(line.getProcessId());
+        boolean matches(Subject subject) {
+            String text = field.read(subject);
+            boolean found;
+            switch (mode) {
+                case EXACT:
+                    found = text.equalsIgnoreCase(value);
+                    break;
+                case REGEX:
+                    found = pattern != null && pattern.matcher(text).find();
+                    break;
                 default:
-                    return null;
+                    found = StringUtil.containsIgnoreCase(text, value);
+                    break;
             }
+            return found != negated;
+        }
+
+        @Override
+        String groupKey() {
+            return negated ? null : field.key;
         }
     }
 
-    /** {@code level:} matches that level or anything more severe. */
-    private static final class LevelTerm implements Term {
-        private final int threshold;
-        private final boolean negated;
+    /** {@code level:} matches that level or anything more severe; {@code is:<level>} exactly that level. */
+    private static final class LevelNode extends Node {
+        private final int level;
+        private final boolean exact;
 
-        LevelTerm(int threshold, boolean negated) {
-            this.threshold = threshold;
-            this.negated = negated;
+        LevelNode(int level, boolean exact) {
+            this.level = level;
+            this.exact = exact;
         }
 
         @Override
-        public String key() {
-            return "level";
-        }
-
-        @Override
-        public boolean negated() {
-            return negated;
-        }
-
-        @Override
-        public boolean matches(LogLine line) {
+        boolean matches(Subject subject) {
             // Lines the parser could not identify carry level -1; they are not
-            // any level, so they fail every level: query.
-            return check(line.getLogLevel() >= threshold, negated);
+            // any level, so they fail every level query.
+            int actual = subject.level();
+            return exact ? actual == level : actual >= level;
+        }
+
+        @Override
+        String groupKey() {
+            return "level";
         }
     }
 
     /** {@code age:} matches entries newer than the given span. */
-    private static final class AgeTerm implements Term {
+    private static final class AgeNode extends Node {
         private final long spanMillis;
-        private final boolean negated;
 
-        AgeTerm(long spanMillis, boolean negated) {
+        AgeNode(long spanMillis) {
             this.spanMillis = spanMillis;
-            this.negated = negated;
         }
 
         @Override
-        public String key() {
+        boolean matches(Subject subject) {
+            long now = System.currentTimeMillis();
+            long timestamp = subject.timestampMillis(now);
+            return timestamp >= 0 && now - timestamp <= spanMillis;
+        }
+
+        @Override
+        String groupKey() {
             return "age";
-        }
-
-        @Override
-        public boolean negated() {
-            return negated;
-        }
-
-        @Override
-        public boolean matches(LogLine line) {
-            long timestamp = parseTimestamp(line.getTimestamp(), System.currentTimeMillis());
-            if (timestamp < 0) {
-                return check(false, negated);
-            }
-            return check(System.currentTimeMillis() - timestamp <= spanMillis, negated);
         }
     }
 
-    private static final class IsTerm implements Term {
-        static final int CRASH = 0;
-        static final int STACK_TRACE = 1;
-        static final int UNKNOWN = 2;
+    /**
+     * {@code is:crash}. Studio takes a Java crash to be an {@code E/AndroidRuntime}
+     * entry starting "FATAL EXCEPTION" and a native one to be {@code A/DEBUG} or
+     * {@code A/libc}, and shows the entry whole. Lines are separate here, so
+     * the "FATAL EXCEPTION" prefix is not required: that would keep only the
+     * first line of the crash and drop its stack.
+     */
+    private static final class CrashNode extends Node {
+        @Override
+        boolean matches(Subject subject) {
+            int level = subject.level();
+            String tag = subject.tag();
+            return level == Log.ERROR && "AndroidRuntime".equals(tag)
+                    || level == LogLineAdapterUtil.LOG_WTF && ("DEBUG".equals(tag) || "libc".equals(tag));
+        }
 
+        @Override
+        String groupKey() {
+            return "is";
+        }
+    }
+
+    /** {@code is:stacktrace}: a line that looks like part of a Java stack trace. */
+    private static final class StackTraceNode extends Node {
         private static final Pattern STACK_FRAME = Pattern.compile(
                 "^\\s*(at\\s+[\\w$.<>]+\\s*\\(|Caused by:|\\.\\.\\.\\s+\\d+\\s+more)");
 
-        private final int kind;
-        private final boolean negated;
-
-        IsTerm(int kind, boolean negated) {
-            this.kind = kind;
-            this.negated = negated;
-        }
-
         @Override
-        public String key() {
-            return "is";
-        }
-
-        @Override
-        public boolean negated() {
-            return negated;
-        }
-
-        @Override
-        public boolean matches(LogLine line) {
-            switch (kind) {
-                case CRASH:
-                    return check(isCrash(line), negated);
-                case STACK_TRACE:
-                    return check(isStackTrace(line), negated);
-                default:
-                    return check(false, negated);
-            }
-        }
-
-        private static boolean isCrash(LogLine line) {
-            String message = line.getLogOutput();
-            if (message == null) {
-                return false;
-            }
-            // Java crash, native crash, and the tombstone header respectively.
-            return StringUtil.containsIgnoreCase(message, "FATAL EXCEPTION")
-                    || StringUtil.containsIgnoreCase(message, "Fatal signal")
-                    || message.contains("*** *** ***");
-        }
-
-        private static boolean isStackTrace(LogLine line) {
-            String message = line.getLogOutput();
-            if (message == null) {
-                return false;
-            }
+        boolean matches(Subject subject) {
+            String message = subject.message();
             return STACK_FRAME.matcher(message).find()
-                    || line.getLogLevel() == -1
-                    && StringUtil.containsIgnoreCase(message, "\tat ");
+                    || subject.level() == -1 && StringUtil.containsIgnoreCase(message, "\tat ");
+        }
+
+        @Override
+        String groupKey() {
+            return "is";
         }
     }
 
-    private static final class PidTerm implements Term {
+    /** {@code pid:}, a MatLog extra, so that "filter by pid" has a term to build. */
+    private static final class PidNode extends Node {
         private final int pid;
-        private final boolean negated;
 
-        PidTerm(int pid, boolean negated) {
+        PidNode(int pid) {
             this.pid = pid;
-            this.negated = negated;
         }
 
         @Override
-        public String key() {
+        boolean matches(Subject subject) {
+            return subject.pid() == pid;
+        }
+
+        @Override
+        String groupKey() {
             return "pid";
-        }
-
-        @Override
-        public boolean negated() {
-            return negated;
-        }
-
-        @Override
-        public boolean matches(LogLine line) {
-            return check(line.getProcessId() == pid, negated);
         }
     }
 
@@ -410,29 +471,19 @@ public final class LogcatQuery {
      * {@code package:mine}. Studio means the packages in the open project;
      * there is no project here, so it means this app - which needs no
      * privileges, unlike a package name, and is the query people actually
-     * reach for.
+     * reach for. Like Studio's, it never joins an implicit OR.
      */
-    private static final class SelfPackageTerm implements Term {
+    private static final class SelfPackageNode extends Node {
         private final int pid = Process.myPid();
         private final boolean negated;
 
-        SelfPackageTerm(boolean negated) {
+        SelfPackageNode(boolean negated) {
             this.negated = negated;
         }
 
         @Override
-        public String key() {
-            return "package";
-        }
-
-        @Override
-        public boolean negated() {
-            return negated;
-        }
-
-        @Override
-        public boolean matches(LogLine line) {
-            return check(line.getProcessId() == pid, negated);
+        boolean matches(Subject subject) {
+            return (subject.pid() == pid) != negated;
         }
     }
 
@@ -456,221 +507,205 @@ public final class LogcatQuery {
         }
     }
 
+    /** A key as written: its name, whether it was negated, and any {@code ~} or {@code =}. */
+    private static final class Key {
+        final String name;
+        final boolean negated;
+        final char modifier;
+
+        Key(String name, boolean negated, char modifier) {
+            this.name = name;
+            this.negated = negated;
+            this.modifier = modifier;
+        }
+    }
+
+    private static final Pattern FIREBASE_TAGS = Pattern.compile(
+            "^(AppInstallOperation|AppInviteActivity|AppInviteAgent|AppInviteAnalytics|AppInviteLogger"
+                    + "|BackgroundTask|ClassMapper|Connection|DataOperation|EventRaiser|FA|FirebaseAppIndex"
+                    + "|FirebaseDatabase|FirebaseInstanceId|FirebaseMessaging|FirebaseRemoteConfig"
+                    + "|NetworkRequest|Persistence|PersistentConnection|RepoOperation|RunLoop|StorageTask"
+                    + "|SyncTree|Transaction|WebSocket)$");
+
     private static final class Parser {
 
         private final String src;
         private int pos;
 
-        private String label;
+        private List<Token> tokens;
+        private int index;
+
+        String label;
 
         Parser(String src) {
             this.src = src;
         }
 
-        LogcatQuery parse() {
-            List<Token> tokens = tokenize();
-            if (tokens.isEmpty()) {
-                return new LogcatQuery(null, label);
-            }
-            int[] index = {0};
-            Node node = parseOr(tokens, index);
-            return new LogcatQuery(node, label);
+        /** The query tree, or null when the input holds no terms at all. */
+        Node parse() {
+            tokens = tokenize();
+            index = 0;
+            return parseItems(false);
         }
 
         // ---- lexer ----
 
         private List<Token> tokenize() {
-            List<Token> tokens = new ArrayList<>();
-            while (pos < src.length()) {
+            List<Token> result = new ArrayList<>();
+            while (true) {
+                skipWhitespace();
+                if (pos >= src.length()) {
+                    return result;
+                }
                 char c = src.charAt(pos);
-                if (Character.isWhitespace(c)) {
+                if (c == '(') {
                     pos++;
-                } else if (c == '&') {
-                    pos++;
-                    tokens.add(new Token(TOKEN_AND, null));
-                } else if (c == '|') {
-                    pos++;
-                    tokens.add(new Token(TOKEN_OR, null));
-                } else if (c == '(') {
-                    pos++;
-                    tokens.add(new Token(TOKEN_OPEN, null));
+                    result.add(new Token(TOKEN_OPEN, null));
                 } else if (c == ')') {
                     pos++;
-                    tokens.add(new Token(TOKEN_CLOSE, null));
+                    result.add(new Token(TOKEN_CLOSE, null));
+                } else if ((c == '&' || c == '|') && standsAlone(pos)) {
+                    pos++;
+                    result.add(new Token(c == '&' ? TOKEN_AND : TOKEN_OR, null));
                 } else {
-                    tokens.add(new Token(TOKEN_TERM, readTerm()));
+                    result.add(new Token(TOKEN_TERM, readTerm()));
                 }
             }
-            return tokens;
         }
 
-        /**
-         * Reads one term, which is either a field reference or a bare phrase.
-         * Adjacent bare words are folded into a single phrase here, so that
-         * "foo bar" is one search rather than two.
-         */
+        /** An operator only when nothing is glued to it: "foo|bar" is a value. */
+        private boolean standsAlone(int p) {
+            return p + 1 >= src.length() || isDelimiter(src.charAt(p + 1));
+        }
+
         private Node readTerm() {
-            boolean negated = false;
-            if (src.charAt(pos) == '-') {
-                if (fieldNameAt(pos + 1) != null) {
-                    negated = true;
-                    pos++;
-                } else if (startsNegatedPhrase(pos)) {
-                    // Negating a bare phrase, as in "-hello". A lone '-' is
-                    // left alone so it stays searchable; a term that really
-                    // does start with a dash needs quotes.
-                    negated = true;
-                    pos++;
-                }
+            Key key = readKey();
+            if (key == null) {
+                return readBareValue();
             }
-
-            String field = fieldNameAt(pos);
-            if (field == null) {
-                // Bare words run together into one phrase, so "foo bar" is a
-                // single search. A field reference stops the run, including a
-                // negated one - fieldNameAt cannot see past the '-', which is
-                // why startsField exists.
-                StringBuilder phrase = new StringBuilder(readBareWord());
-                while (true) {
-                    int save = pos;
-                    int after = skipWhitespace(save);
-                    if (after >= src.length() || isOperator(src.charAt(after))
-                            || startsField(after) || startsNegatedPhrase(after)) {
-                        pos = save;
-                        break;
-                    }
-                    pos = after;
-                    phrase.append(' ').append(readBareWord());
-                }
-                return phrase.length() == 0
-                        ? MATCH_ALL
-                        : new PhraseNode(phrase.toString(), negated);
-            }
-
-            skipFieldName();
-            boolean regex = pos < src.length() && src.charAt(pos) == '~';
-            if (regex) {
-                pos++;
-            }
-            pos++; // the ':' that fieldNameAt matched
-            // A value may be quoted so that one containing spaces stays a
-            // single value: tag:"My Tag".
-            String value = pos < src.length() && src.charAt(pos) == '"'
-                    ? readQuoted()
-                    : readBareWord();
-            return buildTerm(field, negated, regex, value);
-        }
-
-        /** True when a field reference, negated or not, starts at {@code p}. */
-        private boolean startsField(int p) {
-            if (p >= src.length()) {
-                return false;
-            }
-            return fieldNameAt(p) != null
-                    || src.charAt(p) == '-' && fieldNameAt(p + 1) != null;
+            skipWhitespace(); // "tag: foo" is allowed
+            String value = isTextKey(key.name) ? readTextValue() : readPlainValue();
+            return buildTerm(key, value);
         }
 
         /**
-         * True when a negated bare phrase starts at {@code p}. A '-' followed
-         * by a delimiter is just a dash to search for, not a negation.
+         * A key reference at the cursor, or null if the text there is not one.
+         * Only the text keys take a dash or a modifier; "-level:" or "http:"
+         * are not keys, and get searched for as text - which is what Studio's
+         * literal fallback amounts to for them.
          */
-        private boolean startsNegatedPhrase(int p) {
-            return p < src.length() && src.charAt(p) == '-'
-                    && p + 1 < src.length() && !isDelimiter(src.charAt(p + 1));
-        }
-
-        private Node buildTerm(String field, boolean negated, boolean regex, String value) {
-            // An empty value is a half-typed term, not a broken one, so it
-            // stays out of the way instead of emptying the list.
-            if (value.isEmpty()) {
-                return MATCH_ALL;
+        private Key readKey() {
+            int p = pos;
+            boolean negated = false;
+            if (p < src.length() && src.charAt(p) == '-') {
+                negated = true;
+                p++;
             }
-            switch (field) {
-                case "level": {
-                    int level = levelValue(value);
-                    return level < 0 ? new InvalidTerm(field, negated) : new LevelTerm(level, negated);
-                }
-                case "age": {
-                    long span = ageValue(value);
-                    return span < 0 ? new InvalidTerm(field, negated) : new AgeTerm(span, negated);
-                }
-                case "is": {
-                    String kind = value.toLowerCase(Locale.ROOT);
-                    if ("crash".equals(kind)) {
-                        return new IsTerm(IsTerm.CRASH, negated);
-                    }
-                    if ("stacktrace".equals(kind)) {
-                        return new IsTerm(IsTerm.STACK_TRACE, negated);
-                    }
-                    return new IsTerm(IsTerm.UNKNOWN, negated);
-                }
-                case "pid": {
-                    try {
-                        return new PidTerm(Integer.parseInt(value), negated);
-                    } catch (NumberFormatException e) {
-                        return new InvalidTerm(field, negated);
-                    }
-                }
-                case "package":
-                    if ("mine".equalsIgnoreCase(value)) {
-                        return new SelfPackageTerm(negated);
-                    }
-                    break;
-                case "name":
-                    // Only names a saved filter; it constrains nothing.
-                    label = value;
-                    return MATCH_ALL;
-                default:
-                    break;
+            int start = p;
+            while (p < src.length() && Character.isLetter(src.charAt(p))) {
+                p++;
             }
-            return new TextTerm(field, negated, value, regex);
-        }
-
-        /** The field name starting at {@code p}, or null if this is not one. */
-        private String fieldNameAt(int p) {
-            if (p >= src.length() || !isIdentifierStart(src.charAt(p))) {
+            if (p == start) {
                 return null;
             }
-            int end = p;
-            while (end < src.length() && isIdentifierChar(src.charAt(end))) {
-                end++;
+            String name = src.substring(start, p).toLowerCase(Locale.ROOT);
+            char modifier = 0;
+            if (p < src.length() && (src.charAt(p) == '~' || src.charAt(p) == '=')) {
+                modifier = src.charAt(p);
+                p++;
             }
-            int colon = end;
-            if (colon < src.length() && src.charAt(colon) == '~') {
-                colon++;
-            }
-            if (colon >= src.length() || src.charAt(colon) != ':') {
+            if (p >= src.length() || src.charAt(p) != ':') {
                 return null;
             }
-            String name = src.substring(p, end).toLowerCase(Locale.ROOT);
-            return isField(name) ? name : null;
+            p++;
+            if (isTextKey(name)) {
+                pos = p;
+                return new Key(name, negated, modifier);
+            }
+            if (isPlainKey(name) && !negated && modifier == 0) {
+                pos = p;
+                return new Key(name, false, (char) 0);
+            }
+            return null;
         }
 
-        private void skipFieldName() {
-            while (pos < src.length() && isIdentifierChar(src.charAt(pos))) {
+        /** A text key's value: quoted, or unquoted up to whitespace or a bracket. */
+        private String readTextValue() {
+            if (pos >= src.length()) {
+                return "";
+            }
+            char c = src.charAt(pos);
+            if (c == '\'' || c == '"') {
+                return readQuoted(c);
+            }
+            return readUnquoted();
+        }
+
+        /** A level/age/is/name/pid value: Studio takes everything up to whitespace. */
+        private String readPlainValue() {
+            if (pos >= src.length()) {
+                return "";
+            }
+            char c = src.charAt(pos);
+            if (c == '\'' || c == '"') {
+                return readQuoted(c);
+            }
+            int start = pos;
+            // Studio would swallow a closing bracket here; stopping at one is
+            // what lets "(tag:a | level:ERROR)" work.
+            while (pos < src.length() && !isDelimiter(src.charAt(pos))) {
                 pos++;
             }
+            return src.substring(start, pos);
         }
 
-        private String readBareWord() {
-            int end = pos;
-            while (end < src.length() && !isDelimiter(src.charAt(end))) {
-                end++;
+        private Node readBareValue() {
+            char c = src.charAt(pos);
+            String value = c == '\'' || c == '"' ? readQuoted(c) : readUnquoted();
+            return value.isEmpty()
+                    ? MATCH_ALL
+                    : new TextNode(Field.IMPLICIT_LINE, TextNode.CONTAINS, false, value);
+        }
+
+        /**
+         * Up to whitespace or a bracket. A backslash before a space, colon,
+         * quote or backslash stands for that character, as in Studio.
+         */
+        private String readUnquoted() {
+            StringBuilder value = new StringBuilder();
+            while (pos < src.length()) {
+                char c = src.charAt(pos);
+                if (isDelimiter(c)) {
+                    break;
+                }
+                if (c == '\\' && pos + 1 < src.length()) {
+                    char next = src.charAt(pos + 1);
+                    if (next == ' ' || next == ':' || next == '\'' || next == '"' || next == '\\') {
+                        value.append(next);
+                        pos += 2;
+                        continue;
+                    }
+                }
+                value.append(c);
+                pos++;
             }
-            String word = src.substring(pos, end);
-            pos = end;
-            return word;
+            return value.toString();
         }
 
-        private String readQuoted() {
+        /**
+         * A quoted value. Only the quote character itself can be escaped, so
+         * a regular expression's backslashes survive. An unclosed quote runs
+         * to the end of the input: it is being typed.
+         */
+        private String readQuoted(char quote) {
             pos++; // opening quote
             StringBuilder value = new StringBuilder();
             while (pos < src.length()) {
                 char c = src.charAt(pos);
-                if (c == '\\' && pos + 1 < src.length()) {
-                    value.append(src.charAt(pos + 1));
+                if (c == '\\' && pos + 1 < src.length() && src.charAt(pos + 1) == quote) {
+                    value.append(quote);
                     pos += 2;
-                } else if (c == '"') {
+                } else if (c == quote) {
                     pos++;
                     break;
                 } else {
@@ -681,128 +716,204 @@ public final class LogcatQuery {
             return value.toString();
         }
 
-        private int skipWhitespace(int from) {
-            int i = from;
-            while (i < src.length() && Character.isWhitespace(src.charAt(i))) {
-                i++;
+        private Node buildTerm(Key key, String value) {
+            // An empty value is a half-typed term, not a broken one, so it
+            // stays out of the way instead of emptying the list.
+            if (value.isEmpty()) {
+                return MATCH_ALL;
             }
-            return i;
+            switch (key.name) {
+                case "level": {
+                    int level = levelValue(value);
+                    return level < 0 ? new InvalidNode("level") : new LevelNode(level, false);
+                }
+                case "age": {
+                    long span = ageValue(value);
+                    return span < 0 ? new InvalidNode("age") : new AgeNode(span);
+                }
+                case "is": {
+                    String kind = value.toLowerCase(Locale.ROOT);
+                    if ("crash".equals(kind)) {
+                        return new CrashNode();
+                    }
+                    if ("stacktrace".equals(kind)) {
+                        return new StackTraceNode();
+                    }
+                    if ("firebase".equals(kind)) {
+                        // Studio implements this as a tag regex, so it groups with tag terms.
+                        return new TextNode(Field.TAG, FIREBASE_TAGS);
+                    }
+                    int level = levelValue(kind);
+                    return level < 0 ? new InvalidNode("is") : new LevelNode(level, true);
+                }
+                case "name":
+                    // Only names a saved filter; it constrains nothing.
+                    label = value;
+                    return MATCH_ALL;
+                case "pid": {
+                    try {
+                        return new PidNode(Integer.parseInt(value));
+                    } catch (NumberFormatException e) {
+                        return new InvalidNode("pid");
+                    }
+                }
+                case "package":
+                    if (key.modifier == 0 && "mine".equalsIgnoreCase(value)) {
+                        return new SelfPackageNode(key.negated);
+                    }
+                    break;
+                default:
+                    break;
+            }
+            int mode = key.modifier == '~' ? TextNode.REGEX
+                    : key.modifier == '=' ? TextNode.EXACT
+                    : TextNode.CONTAINS;
+            return new TextNode(Field.forKey(key.name), mode, key.negated, value);
+        }
+
+        private void skipWhitespace() {
+            while (pos < src.length() && Character.isWhitespace(src.charAt(pos))) {
+                pos++;
+            }
         }
 
         // ---- parser ----
 
-        private Node parseOr(List<Token> tokens, int[] index) {
-            List<Node> parts = new ArrayList<>();
-            parts.add(parseAnd(tokens, index));
-            while (index[0] < tokens.size() && tokens.get(index[0]).type == TOKEN_OR) {
-                index[0]++;
-                parts.add(parseAnd(tokens, index));
-            }
-            return parts.size() == 1 ? parts.get(0) : new OrNode(parts);
-        }
-
-        private Node parseAnd(List<Token> tokens, int[] index) {
+        /**
+         * Whitespace-separated items up to the end, or up to the closing
+         * bracket when {@code inBrackets}. Each item is a full {@code &}/{@code |}
+         * expression; the items are then combined the way Studio combines its
+         * top-level terms. A stray operator or bracket is skipped.
+         */
+        private Node parseItems(boolean inBrackets) {
             List<Node> items = new ArrayList<>();
-            List<Boolean> explicit = new ArrayList<>();
-
-            items.add(parseUnit(tokens, index));
-            explicit.add(Boolean.FALSE);
-
-            while (index[0] < tokens.size()) {
-                Token next = tokens.get(index[0]);
-                if (next.type == TOKEN_AND) {
-                    index[0]++;
-                    items.add(parseUnit(tokens, index));
-                    explicit.add(Boolean.TRUE);
-                } else if (next.type == TOKEN_TERM || next.type == TOKEN_OPEN) {
-                    items.add(parseUnit(tokens, index));
-                    explicit.add(Boolean.FALSE);
+            while (index < tokens.size()) {
+                int type = tokens.get(index).type;
+                if (type == TOKEN_CLOSE) {
+                    if (inBrackets) {
+                        break;
+                    }
+                    index++;
+                } else if (type == TOKEN_AND || type == TOKEN_OR) {
+                    index++;
                 } else {
-                    break;
+                    items.add(parseOr());
                 }
             }
-            return combine(items, explicit);
+            return combine(items);
+        }
+
+        private Node parseOr() {
+            Node left = parseAnd();
+            List<Node> parts = null;
+            while (index < tokens.size() && tokens.get(index).type == TOKEN_OR) {
+                index++;
+                Node right = parseAnd();
+                if (right == null) {
+                    break; // a dangling '|', still being typed
+                }
+                if (parts == null) {
+                    parts = new ArrayList<>();
+                    parts.add(left);
+                }
+                parts.add(right);
+            }
+            return parts == null ? left : new OrNode(parts);
+        }
+
+        private Node parseAnd() {
+            Node left = parseUnit();
+            if (left == null) {
+                return null;
+            }
+            List<Node> parts = null;
+            while (index < tokens.size() && tokens.get(index).type == TOKEN_AND) {
+                index++;
+                Node right = parseUnit();
+                if (right == null) {
+                    break; // a dangling '&'
+                }
+                if (parts == null) {
+                    parts = new ArrayList<>();
+                    parts.add(left);
+                }
+                parts.add(right);
+            }
+            return parts == null ? left : new AndNode(parts);
+        }
+
+        /** A term or a bracketed group; null when the next token is neither. */
+        private Node parseUnit() {
+            if (index >= tokens.size()) {
+                return null;
+            }
+            Token token = tokens.get(index);
+            if (token.type == TOKEN_TERM) {
+                index++;
+                return token.term;
+            }
+            if (token.type == TOKEN_OPEN) {
+                index++;
+                Node inner = parseItems(true);
+                if (index < tokens.size() && tokens.get(index).type == TOKEN_CLOSE) {
+                    index++;
+                }
+                return inner == null ? MATCH_ALL : inner; // "()" matches everything, as in Studio
+            }
+            return null;
         }
 
         /**
-         * Adjacent terms that name the same field and are not negated are
-         * ORed - "tag:a tag:b" finds either tag - and everything else is
-         * ANDed.
+         * Studio's top-level rule: terms sharing a group key are ORed, in
+         * order of first appearance, and the resulting groups are ANDed.
          */
-        private Node combine(List<Node> items, List<Boolean> explicit) {
-            List<Node> groups = new ArrayList<>();
-            List<Node> current = new ArrayList<>();
-            current.add(items.get(0));
-
-            for (int i = 1; i < items.size(); i++) {
-                if (!explicit.get(i) && sameFieldOr(items.get(i - 1), items.get(i))) {
-                    current.add(items.get(i));
-                } else {
-                    groups.add(current.size() == 1 ? current.get(0) : new OrNode(current));
-                    current = new ArrayList<>();
-                    current.add(items.get(i));
+        private Node combine(List<Node> items) {
+            if (items.isEmpty()) {
+                return null;
+            }
+            if (items.size() == 1) {
+                return items.get(0);
+            }
+            Map<Object, List<Node>> groups = new LinkedHashMap<>();
+            for (int i = 0; i < items.size(); i++) {
+                Node item = items.get(i);
+                String key = item.groupKey();
+                Object groupId = key != null ? key : Integer.valueOf(i);
+                List<Node> group = groups.get(groupId);
+                if (group == null) {
+                    group = new ArrayList<>();
+                    groups.put(groupId, group);
                 }
+                group.add(item);
             }
-            groups.add(current.size() == 1 ? current.get(0) : new OrNode(current));
-
-            return groups.size() == 1 ? groups.get(0) : new AndNode(groups);
+            List<Node> parts = new ArrayList<>(groups.size());
+            for (List<Node> group : groups.values()) {
+                parts.add(group.size() == 1 ? group.get(0) : new OrNode(group));
+            }
+            return parts.size() == 1 ? parts.get(0) : new AndNode(parts);
         }
-
-        private boolean sameFieldOr(Node a, Node b) {
-            if (!(a instanceof Term) || !(b instanceof Term)) {
-                return false;
-            }
-            Term left = (Term) a;
-            Term right = (Term) b;
-            return !left.negated() && !right.negated() && left.key().equals(right.key());
-        }
-
-        private Node parseUnit(List<Token> tokens, int[] index) {
-            if (index[0] >= tokens.size()) {
-                return MATCH_ALL;
-            }
-            Token token = tokens.get(index[0]);
-            if (token.type == TOKEN_OPEN) {
-                index[0]++;
-                Node node = parseOr(tokens, index);
-                if (index[0] < tokens.size() && tokens.get(index[0]).type == TOKEN_CLOSE) {
-                    index[0]++;
-                }
-                return node;
-            }
-            if (token.type == TOKEN_TERM) {
-                index[0]++;
-                return token.term;
-            }
-            // A stray ')' or a dangling '&': there is nothing to add, and not
-            // consuming it keeps the recursive descent moving.
-            return MATCH_ALL;
-        }
-    }
-
-    private static boolean isIdentifierStart(char c) {
-        return Character.isLetter(c);
-    }
-
-    private static boolean isIdentifierChar(char c) {
-        return Character.isLetterOrDigit(c) || c == '_';
-    }
-
-    private static boolean isOperator(char c) {
-        return c == '&' || c == '|' || c == '(' || c == ')';
     }
 
     private static boolean isDelimiter(char c) {
-        return Character.isWhitespace(c) || isOperator(c);
+        return Character.isWhitespace(c) || c == '(' || c == ')';
     }
 
-    private static boolean isField(String name) {
+    /** The keys that take quoted values, negation and the {@code ~}/{@code =} modifiers. */
+    private static boolean isTextKey(String name) {
         switch (name) {
             case "tag":
             case "message":
             case "line":
             case "package":
             case "process":
+                return true;
+            default:
+                return false;
+        }
+    }
+
+    private static boolean isPlainKey(String name) {
+        switch (name) {
             case "level":
             case "age":
             case "is":
@@ -814,25 +925,25 @@ public final class LogcatQuery {
         }
     }
 
-    /** The severity at or above which {@code level:} starts matching. */
+    /** The severity a level name stands for, or -1. Studio takes the full names; the letters are a courtesy. */
     private static int levelValue(String value) {
         switch (value.toLowerCase(Locale.ROOT)) {
             case "v":
             case "verbose":
-                return android.util.Log.VERBOSE;
+                return Log.VERBOSE;
             case "d":
             case "debug":
-                return android.util.Log.DEBUG;
+                return Log.DEBUG;
             case "i":
             case "info":
-                return android.util.Log.INFO;
+                return Log.INFO;
             case "w":
             case "warn":
             case "warning":
-                return android.util.Log.WARN;
+                return Log.WARN;
             case "e":
             case "error":
-                return android.util.Log.ERROR;
+                return Log.ERROR;
             case "a":
             case "assert":
             case "f":
@@ -843,7 +954,7 @@ public final class LogcatQuery {
         }
     }
 
-    /** Milliseconds for an {@code age:} value such as {@code 30s} or {@code 5m}. */
+    /** Milliseconds for an {@code age:} value such as {@code 30s} or {@code 5m}, or -1. */
     private static long ageValue(String value) {
         if (value.length() < 2) {
             return -1;

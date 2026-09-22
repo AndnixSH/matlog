@@ -10,8 +10,13 @@ import java.util.Calendar;
 import java.util.Locale;
 
 /**
- * Covers the query language's semantics rather than its syntax: which terms
- * combine, in what order, and what each field considers a match.
+ * Covers the query language's semantics: which terms combine, in what order,
+ * and what each field considers a match.
+ *
+ * <p>The {@link #KVQ} lines and most of the expectations below were checked
+ * against Android Studio AI-261 by logging exactly these lines on a device
+ * and typing the same queries into its Logcat filter box. Where this
+ * implementation is deliberately looser than Studio, the test says so.
  */
 public class LogcatQueryTest {
 
@@ -20,6 +25,42 @@ public class LogcatQueryTest {
     private static LogLine line(char level, String tag, int pid, String message) {
         return LogLine.newLogLine(TIMESTAMP + " " + level + "/" + tag + "(" + pid + "): " + message,
                 false, "");
+    }
+
+    /**
+     * The fixture used against Studio. Two tags carry the trailing space that
+     * {@code logcat -v time} pads short tags with, since that is what
+     * {@link LogLine} really sees.
+     */
+    private static final LogLine[] KVQ = {
+            line('I', "KvqAlpha", 9522, "kvq say hello world now"),
+            line('I', "KvqAlpha", 9523, "kvq world hello"),
+            line('E', "KvqBeta ", 9524, "kvq error line"),
+            line('W', "KvqGamma", 9525, "kvq warn line"),
+            line('D', "KvqDelta", 9526, "kvq -1 negative value"),
+            line('I', "KvqAlpha", 9527, "kvq MixedCase Regex"),
+            line('I', "Kvq Space", 9528, "kvq tag with space"),
+            line('I', "KvqEpsilon", 9529, "kvq foo|bar pipe"),
+            line('F', "KvqZeta ", 9530, "kvq assert level"),
+            line('I', "KvqAlpha", 9531, "kvq see http://example.com/x"),
+    };
+
+    private static final String ALL = "9522 9523 9524 9525 9526 9527 9528 9529 9530 9531";
+    private static final String ALPHA = "9522 9523 9527 9531";
+
+    /** The pids of the fixture lines {@code query} matches, in order. */
+    private static String matching(String query) {
+        LogcatQuery parsed = LogcatQuery.parse(query);
+        StringBuilder result = new StringBuilder();
+        for (LogLine logLine : KVQ) {
+            if (parsed.matches(logLine)) {
+                if (result.length() > 0) {
+                    result.append(' ');
+                }
+                result.append(logLine.getProcessId());
+            }
+        }
+        return result.toString();
     }
 
     private static boolean matches(String query, LogLine logLine) {
@@ -31,156 +72,186 @@ public class LogcatQueryTest {
         return line('I', "MyTag", 1234, message);
     }
 
-    // ---- plain terms ----
+    // ---- bare text ----
 
     @Test
     public void emptyQueryMatchesEverything() {
         assertTrue(LogcatQuery.parse("").isEmpty());
-        assertTrue(matches("", info("hello")));
-        assertTrue(matches("   ", info("hello")));
+        assertTrue(LogcatQuery.parse("   ").isEmpty());
+        assertEquals(ALL, matching(""));
     }
 
     @Test
-    public void bareTermMatchesTagOrMessage() {
-        assertTrue(matches("hello", info("hello world")));
-        assertTrue(matches("MyTag", info("hello world")));
-        assertFalse(matches("nope", info("hello world")));
+    public void bareWordSearchesTheWholeLine() {
+        assertEquals(ALL, matching("kvq"));
+        assertEquals(ALPHA, matching("kvqalpha"));
+        assertEquals("", matching("nope"));
+        // The pid and the timestamp are part of the line, as in Studio.
+        assertEquals("9522 9523 9524 9525 9526 9527 9528 9529", matching("kvq 952"));
+        assertEquals("9530", matching("9530"));
+        assertEquals(ALL, matching("23:43:09"));
     }
 
     @Test
-    public void bareTermIgnoresCase() {
-        assertTrue(matches("HELLO", info("hello world")));
+    public void eachBareWordIsItsOwnTerm() {
+        // Studio does not join adjacent words into a phrase: both orders match.
+        assertEquals("9522 9523", matching("kvq world hello"));
+        assertEquals("9522 9523", matching("kvq hello world"));
     }
 
     @Test
-    public void adjacentBareWordsAreOnePhrase() {
-        assertTrue(matches("hello world", info("say hello world now")));
-        assertFalse("a phrase must appear in order",
-                matches("world hello", info("say hello world now")));
+    public void quotedTextIsAPhrase() {
+        assertEquals("9522", matching("'hello world'"));
+        assertEquals("9522", matching("\"hello world\""));
+        assertEquals("", matching("\"world hello now\""));
     }
 
     @Test
-    public void bareNumberMatchesThePid() {
-        assertTrue(matches("1234", info("nothing")));
-        assertFalse(matches("4321", info("nothing")));
+    public void aLeadingDashOnBareTextIsJustText() {
+        // Studio has no negation for bare words; "-1" finds a minus one.
+        assertEquals("9526", matching("kvq -1"));
+        assertEquals("9526", matching("-1"));
     }
 
-    // ---- fields ----
+    @Test
+    public void unknownKeyIsSearchedAsText() {
+        // "http" is not a key, so its colon must not split the term.
+        assertEquals("9531", matching("http://example.com"));
+    }
+
+    // ---- text keys ----
 
     @Test
     public void tagField() {
-        assertTrue(matches("tag:MyTag", info("x")));
-        assertTrue(matches("tag:ytag", info("x")));
-        assertFalse(matches("tag:Other", info("x")));
+        assertEquals(ALPHA, matching("tag:KvqAlpha"));
+        assertEquals(ALPHA, matching("tag:alpha"));
+        assertEquals("", matching("tag:hello"));
+    }
+
+    @Test
+    public void aSpaceAfterTheColonIsAllowed() {
+        assertEquals("", matching("tag: hello"));
+        assertEquals("9522 9523", matching("message: hello"));
     }
 
     @Test
     public void messageFieldDoesNotSeeTheTag() {
-        assertTrue(matches("message:hello", info("hello")));
-        assertFalse(matches("message:MyTag", info("hello")));
+        assertEquals("9522 9523", matching("message:hello"));
+        assertEquals("", matching("message:KvqAlpha"));
+    }
+
+    @Test
+    public void lineFieldSeesEverything() {
+        assertEquals("9524", matching("line:9524"));
+        assertEquals(ALL, matching("line:kvq"));
     }
 
     @Test
     public void quotedValueKeepsSpaces() {
-        assertTrue(matches("tag:\"My Tag\"", line('I', "My Tag", 1, "x")));
-        assertFalse(matches("tag:\"My Tag\"", line('I', "My", 1, "x")));
+        assertEquals("9528", matching("tag:\"Kvq Space\""));
+        assertEquals("9528", matching("tag:'Kvq Space'"));
+        assertEquals("9528", matching("tag:Kvq\\ Space"));
+        assertEquals("", matching("tag:\"Kvq  Space\""));
     }
 
     @Test
-    public void pidField() {
-        assertTrue(matches("pid:1234", info("x")));
-        assertFalse(matches("pid:1", info("x")));
+    public void keyNamesIgnoreCase() {
+        // Studio wants lowercase keys; accepting either costs nothing.
+        assertEquals(ALPHA, matching("TAG:KvqAlpha"));
+        assertEquals(ALPHA, matching("Tag:KvqAlpha"));
     }
 
     @Test
-    public void unknownFieldNameIsSearchedAsText() {
-        // "http" is not a field, so its colon must not split the term.
-        assertTrue(matches("http://example.com", info("see http://example.com/x")));
+    public void exactMatch() {
+        assertEquals(ALPHA, matching("tag=:KvqAlpha"));
+        assertEquals(ALPHA, matching("tag=:kvqalpha"));
+        assertEquals("", matching("tag=:Alpha"));
+        assertEquals("9525 9526 9528 9529 9530", matching("-tag=:KvqAlpha -tag=:KvqBeta message:e"));
+    }
+
+    @Test
+    public void tagPaddingIsNotPartOfTheTag() {
+        // logcat -v time pads "KvqBeta" to "KvqBeta "; Studio sees the real tag.
+        assertEquals("9524", matching("tag=:KvqBeta"));
+        assertEquals("9524", matching("tag~:Beta$"));
     }
 
     // ---- negation and regex ----
 
     @Test
     public void negatedTerm() {
-        assertFalse(matches("-tag:MyTag", info("x")));
-        assertTrue(matches("-tag:Other", info("x")));
-    }
-
-    @Test
-    public void negatedPhrase() {
-        assertFalse(matches("-hello", info("hello world")));
-        assertTrue(matches("-hello", info("goodbye")));
-    }
-
-    @Test
-    public void negatedFieldIsNotAbsorbedIntoAPhrase() {
-        // The '-' makes fieldNameAt blind to the field, which is exactly where
-        // a naive phrase scan would swallow it.
-        assertFalse(matches("hello -level:error", line('E', "TT", 1, "hello")));
-        assertTrue(matches("hello -level:error", line('I', "TT", 1, "hello")));
+        assertEquals("9524 9525 9526 9528 9529 9530", matching("-tag:KvqAlpha kvq"));
+        assertEquals("9525 9526 9528 9529 9530", matching("kvq -tag:KvqAlpha -tag:KvqBeta"));
     }
 
     @Test
     public void regexField() {
-        assertTrue(matches("tag~:My.*", info("x")));
-        assertTrue(matches("message~:h.llo", info("hello")));
+        assertEquals(ALPHA, matching("tag~:Alp.a"));
+        assertEquals("9522 9523", matching("message~:h.llo"));
+        assertEquals("", matching("-tag~:Kvq"));
     }
 
     @Test
-    public void regexIsCaseSensitive() {
-        assertFalse(matches("tag~:mytag", info("x")));
-        assertTrue(matches("tag~:\"(?i)mytag\"", info("x")));
+    public void regexIgnoresCase() {
+        // Studio's regexes follow its "match case" toggle, which is off by default.
+        assertEquals(ALPHA, matching("tag~:kvqalpha"));
+    }
+
+    @Test
+    public void aPipeInsideAValueIsNotAnOperator() {
+        assertEquals("9522 9523 9525 9527 9531", matching("tag~:Alpha|Gamma$"));
+        assertEquals("9529", matching("message:foo|bar"));
+        assertEquals("9529", matching("foo|bar"));
     }
 
     @Test
     public void unfinishedRegexMatchesNothingRatherThanThrowing() {
-        // Quoted, because a bare '(' would start a group.
-        assertFalse(matches("tag~:\"My(\"", info("x")));
+        assertEquals("", matching("tag~:Kvq["));
+        assertEquals("", matching("tag~:\"Kvq(\""));
+        // A bare "(" is a bracket, not part of the regex, and an unclosed one is ignored.
+        assertEquals(ALL, matching("tag~:Kvq("));
     }
 
     @Test
-    public void quotedRegexMayContainParentheses() {
-        assertTrue(matches("tag~:\"My(Ta)?g\"", info("x")));
+    public void quotedRegexKeepsItsBackslashes() {
+        assertEquals("9526", matching("message~:\"-\\d+\""));
+        assertEquals("9526", matching("message~:-\\d+"));
     }
 
     // ---- level ----
 
     @Test
     public void levelMatchesThatLevelAndAbove() {
-        assertTrue(matches("level:WARN", line('W', "TT", 1, "x")));
-        assertTrue(matches("level:WARN", line('E', "TT", 1, "x")));
-        assertTrue(matches("level:WARN", line('F', "TT", 1, "x")));
-        assertFalse(matches("level:WARN", line('I', "TT", 1, "x")));
-        assertFalse(matches("level:WARN", line('D', "TT", 1, "x")));
-    }
-
-    @Test
-    public void verboseLevelAcceptsEveryParsedLine() {
-        assertTrue(matches("level:VERBOSE", line('V', "TT", 1, "x")));
-        assertTrue(matches("level:VERBOSE", line('F', "TT", 1, "x")));
-    }
-
-    @Test
-    public void assertIsTheTopLevel() {
-        assertTrue(matches("level:ASSERT", line('F', "TT", 1, "x")));
-        assertFalse(matches("level:ASSERT", line('E', "TT", 1, "x")));
+        assertEquals("9524 9530", matching("kvq level:error"));
+        assertEquals("9524 9525 9530", matching("kvq level:warn"));
+        assertEquals("9530", matching("kvq level:assert"));
+        assertEquals(ALL, matching("kvq level:verbose"));
+        assertEquals("9524 9530", matching("level: error"));
     }
 
     @Test
     public void levelAcceptsSingleLettersAndIgnoresCase() {
-        assertTrue(matches("level:e", line('E', "TT", 1, "x")));
-        assertTrue(matches("level:warn", line('W', "TT", 1, "x")));
+        // Studio rejects "e" and "WARNING"; abbreviations are a courtesy here.
+        assertEquals("9524 9530", matching("kvq level:e"));
+        assertEquals("9524 9525 9530", matching("kvq level:WARNING"));
     }
 
     @Test
-    public void levelCanBeNegated() {
-        assertFalse(matches("-level:WARN", line('E', "TT", 1, "x")));
-        assertTrue(matches("-level:WARN", line('I', "TT", 1, "x")));
+    public void levelCannotBeNegated() {
+        // Studio treats "-level:error" as plain text, so this looks for that text.
+        assertEquals("", matching("kvq -level:error"));
     }
 
     @Test
     public void anUnknownLevelMatchesNothing() {
-        assertFalse(matches("level:purple", info("x")));
+        assertEquals("", matching("level:purple"));
+    }
+
+    @Test
+    public void isLevelMatchesExactly() {
+        assertEquals("9524", matching("kvq is:error"));
+        assertEquals("9525", matching("kvq is:warn"));
+        assertEquals("", matching("kvq is:banana"));
     }
 
     @Test
@@ -204,22 +275,36 @@ public class LogcatQueryTest {
 
     @Test
     public void isCrash() {
-        assertTrue(matches("is:crash", info("FATAL EXCEPTION: main")));
-        assertTrue(matches("is:crash", info("Fatal signal 11 (SIGSEGV)")));
-        assertTrue(matches("is:crash", info("*** *** *** *** *** *** *** ***")));
-        assertFalse(matches("is:crash", info("nothing wrong here")));
+        // Studio: E/AndroidRuntime for a Java crash, A/DEBUG or A/libc for a
+        // native one. Every line of the entry counts, not only the first.
+        assertTrue(matches("is:crash", line('E', "AndroidRuntime", 1, "FATAL EXCEPTION: main")));
+        assertTrue(matches("is:crash", line('E', "AndroidRuntime", 1, "    at com.example.Foo.bar(Foo.java:1)")));
+        assertTrue(matches("is:crash", line('F', "libc    ", 1, "Fatal signal 11 (SIGSEGV)")));
+        assertTrue(matches("is:crash", line('F', "DEBUG   ", 1, "*** *** *** *** ***")));
+        assertFalse(matches("is:crash", line('I', "AndroidRuntime", 1, "FATAL EXCEPTION: main")));
+        assertFalse(matches("is:crash", line('E', "MyTag", 1, "FATAL EXCEPTION: main")));
     }
 
     @Test
-    public void anUnknownIsValueMatchesNothing() {
-        assertFalse(matches("is:banana", info("x")));
+    public void isFirebaseMatchesTheKnownTagsExactly() {
+        assertTrue(matches("is:firebase", line('I', "FA      ", 1, "x")));
+        assertTrue(matches("is:firebase", line('I', "FirebaseMessaging", 1, "x")));
+        assertFalse(matches("is:firebase", line('I', "FAX", 1, "x")));
+        assertFalse(matches("is:firebase", line('I', "fa", 1, "x")));
+    }
+
+    @Test
+    public void pidField() {
+        assertEquals("9524", matching("pid:9524"));
+        assertEquals("9524 9525", matching("pid:9524 pid:9525"));
+        assertEquals("", matching("pid:abc"));
     }
 
     @Test
     public void nameOnlyLabelsTheQuery() {
-        LogcatQuery query = LogcatQuery.parse("name:\"my filter\"");
-        assertEquals("my filter", query.getLabel());
-        assertTrue(query.matches(info("anything")));
+        LogcatQuery query = LogcatQuery.parse("name:'my filter' kvq name:second");
+        assertEquals("second", query.getLabel());
+        assertEquals(ALL, matching("name:'my filter' kvq"));
     }
 
     // ---- age ----
@@ -233,7 +318,6 @@ public class LogcatQueryTest {
 
         assertFalse(matches("age:5m", threeHoursAgo));
         assertTrue(matches("age:1d", threeHoursAgo));
-        assertTrue(matches("-age:5m", threeHoursAgo));
     }
 
     @Test
@@ -262,60 +346,116 @@ public class LogcatQueryTest {
     // ---- combining terms ----
 
     @Test
-    public void differentFieldsAreAnded() {
-        assertTrue(matches("tag:MyTag level:INFO", line('I', "MyTag", 1, "x")));
-        assertFalse(matches("tag:MyTag level:ERROR", line('I', "MyTag", 1, "x")));
+    public void differentKeysAreAnded() {
+        assertEquals("9524", matching("tag:KvqBeta level:error"));
+        assertEquals("", matching("tag:KvqAlpha level:error"));
     }
 
     @Test
-    public void adjacentTermsSharingAFieldAreOred() {
-        assertTrue(matches("tag:zzz tag:MyTag", info("x")));
-        assertTrue(matches("tag:zzz tag:qqq", line('I', "zzz", 1, "x")));
-        assertFalse(matches("tag:zzz tag:qqq", line('I', "c", 1, "x")));
+    public void termsSharingAKeyAreOredWhereverTheyAppear() {
+        assertEquals("9522 9523 9524 9527 9531", matching("tag:KvqAlpha tag:KvqBeta"));
+        // Not only when adjacent: Studio groups by key across the whole query.
+        assertEquals("9524", matching("tag:KvqAlpha level:error tag:KvqBeta"));
+        assertEquals("9522 9523 9524 9527 9531", matching("tag:KvqAlpha tag~:Beta tag=:kvqbeta"));
     }
 
     @Test
-    public void anExplicitAndOverridesTheSameFieldOr() {
-        assertFalse(matches("tag:zzz & tag:MyTag", info("x")));
+    public void aNegatedTermIsAlwaysAnded() {
+        assertEquals(ALPHA, matching("tag:KvqAlpha -tag:Other"));
+        assertEquals("", matching("tag:KvqBeta -tag:KvqBeta"));
     }
 
     @Test
-    public void aNegatedTermBreaksTheSameFieldRun() {
-        assertTrue(matches("tag:MyTag -tag:Other", info("x")));
-        assertFalse(matches("tag:Other -tag:Other", info("x")));
+    public void bareWordsAreAlwaysAnded() {
+        assertEquals("9522", matching("hello tag:KvqAlpha now"));
+    }
+
+    @Test
+    public void anExplicitAndOverridesTheSameKeyOr() {
+        assertEquals("", matching("tag:KvqAlpha & tag:KvqBeta"));
+        assertEquals(ALPHA, matching("tag:KvqAlpha & kvq"));
+        assertEquals("", matching("kvq tag:KvqAlpha & level:error"));
+        assertEquals(ALPHA, matching("kvq tag:KvqAlpha & level:info"));
     }
 
     @Test
     public void andBindsTighterThanOr() {
-        // tag:foo | (tag:MyTag & level:ERROR)
-        assertTrue("tag:foo alone is enough",
-                matches("tag:foo | tag:MyTag & level:ERROR", line('V', "foo", 1, "x")));
-        assertFalse("tag:MyTag alone is not",
-                matches("tag:foo | tag:MyTag & level:ERROR", line('V', "MyTag", 1, "x")));
-        assertTrue("both together are",
-                matches("tag:foo | tag:MyTag & level:ERROR", line('E', "MyTag", 1, "x")));
+        // tag:KvqGamma | (tag:KvqAlpha & message:hello)
+        assertEquals("9522 9523 9525", matching("tag:KvqGamma | tag:KvqAlpha & message:hello"));
     }
 
     @Test
-    public void parenthesesOverridePrecedence() {
-        String query = "(tag:foo | tag:MyTag) & level:ERROR";
-        assertFalse(matches(query, line('V', "MyTag", 1, "x")));
-        assertTrue(matches(query, line('E', "MyTag", 1, "x")));
+    public void whitespaceSeparatedTermsCombineAtTheLowestPrecedence() {
+        // These are the cases Studio gets "wrong" if you expect left to right:
+        // the run of |-joined terms is one item, the rest is ANDed around it.
+        assertEquals("9522 9523", matching("hello tag:KvqAlpha | tag:KvqBeta"));
+        assertEquals("9524", matching("tag:KvqAlpha | tag:KvqBeta level:error"));
+        assertEquals("9522 9523 9524 9527 9531", matching("(tag:KvqAlpha | tag:KvqBeta) kvq"));
     }
 
     @Test
-    public void studioExampleWithANegatedLevelAndAPhrase() {
-        // -level:error sync, straight out of the Studio search field.
-        assertTrue(matches("-level:error sync", line('I', "TT", 1, "sync finished")));
-        assertFalse(matches("-level:error sync", line('E', "TT", 1, "sync finished")));
-        assertFalse(matches("-level:error sync", line('I', "TT", 1, "unrelated")));
+    public void parenthesesGroup() {
+        assertEquals("9522 9523 9524 9527 9530 9531", matching("(level:error | tag:KvqAlpha) & kvq"));
+        assertEquals("9522 9523 9524 9527 9531", matching("kvq & (tag:KvqAlpha | tag:KvqBeta)"));
+        assertEquals("9524", matching("(tag:KvqAlpha | tag:KvqBeta) & level:error"));
+    }
+
+    @Test
+    public void aClosingBracketEndsALevelValue() {
+        // Studio's lexer swallows the ")" into the level and rejects the whole
+        // query; here the documented example form simply works.
+        assertEquals("9522 9523 9524 9527 9530 9531", matching("(tag:KvqAlpha | level:error) & kvq"));
+    }
+
+    @Test
+    public void severalTermsInsideBracketsAreAllowed() {
+        // A syntax error in Studio; here the bracket combines them like the top level.
+        assertEquals("9522 9523 9524 9527 9531", matching("kvq (tag:KvqAlpha tag:KvqBeta)"));
+    }
+
+    @Test
+    public void emptyBracketsMatchEverything() {
+        assertEquals(ALL, matching("kvq & () & kvq"));
+    }
+
+    @Test
+    public void selfPackageNeverJoinsAnImplicitOr() {
+        // Under test Process.myPid() is 0, which is none of the fixture's pids.
+        assertEquals("", matching("package:mine"));
+        assertEquals(ALL, matching("-package:mine"));
+        assertEquals("", matching("package:mine package:com.example"));
+    }
+
+    // ---- half-typed input ----
+
+    @Test
+    public void aKeyWithoutAValueIsIgnored() {
+        assertEquals(ALL, matching("kvq tag:"));
+        assertEquals(ALL, matching("kvq tag: "));
+        assertEquals(ALL, matching("kvq level:"));
+    }
+
+    @Test
+    public void anUnclosedQuoteRunsToTheEnd() {
+        assertEquals(ALPHA, matching("tag:\"KvqAl"));
+        assertEquals("9522", matching("'hello world"));
+    }
+
+    @Test
+    public void danglingOperatorsAreIgnored() {
+        assertEquals(ALPHA, matching("tag:KvqAlpha |"));
+        assertEquals(ALPHA, matching("| tag:KvqAlpha"));
+        assertEquals(ALPHA, matching("tag:KvqAlpha &"));
+        assertEquals(ALPHA, matching("(tag:KvqAlpha"));
+        assertEquals(ALPHA, matching("tag:KvqAlpha)"));
     }
 
     @Test
     public void strayPunctuationDoesNotThrow() {
         // Each of these is reachable by typing one character at a time, so the
         // only requirement is that parsing them returns something.
-        String[] broken = {"()", "&", "|", "tag:(unclosed", ")))", "| |", "-", "tag:", "~:x"};
+        String[] broken = {"()", "&", "|", "tag:(unclosed", ")))", "| |", "-", "tag:", "~:x",
+                "\"", "'", "tag:\"", "-tag~:", "((", "&&", "tag:a|", "a\\"};
         for (String query : broken) {
             LogcatQuery.parse(query).matches(info("x"));
         }

@@ -55,6 +55,12 @@ public final class ProcessNameHelper {
     }
 
     private static synchronized String lookup(int pid) {
+        if (!SuperUserHelper.isResolved()) {
+            // Still working out whether we have root or Shizuku. Answering
+            // "unknown" now is fine; caching that answer for TTL_MILLIS would
+            // leave the first half minute of process: queries empty.
+            return null;
+        }
         long now = System.currentTimeMillis();
         if (now - builtAt > TTL_MILLIS) {
             names = readProcessNames();
@@ -87,38 +93,47 @@ public final class ProcessNameHelper {
     }
 
     private static Map<Integer, String> parse(CommandProcess process) throws IOException {
-        Map<Integer, String> result = new HashMap<>();
         try (BufferedReader reader = new BufferedReader(
                 new InputStreamReader(process.getInputStream()))) {
-            String line;
-            while ((line = reader.readLine()) != null) {
-                int split = indexOfWhitespace(line);
-                if (split <= 0) {
-                    continue;
-                }
-                int pid;
-                try {
-                    pid = Integer.parseInt(line.substring(0, split));
-                } catch (NumberFormatException e) {
-                    continue; // the "PID ARGS" header
-                }
-                // ARGS is the whole command line; its first word is the
-                // process, and anything after it is an argument.
-                String command = line.substring(split).trim();
-                int end = indexOfWhitespace(command);
-                if (end > 0) {
-                    command = command.substring(0, end);
-                }
-                if (command.isEmpty()) {
-                    continue;
-                }
-                // Binaries report a path; the process name is the last segment.
-                int slash = command.lastIndexOf('/');
-                if (slash >= 0 && slash + 1 < command.length()) {
-                    command = command.substring(slash + 1);
-                }
-                result.put(pid, command);
+            return parse(reader);
+        }
+    }
+
+    /**
+     * Reads {@code ps -A -o PID,ARGS} output. The PID column is right-aligned,
+     * so most lines start with spaces; those are not a column break.
+     */
+    static Map<Integer, String> parse(BufferedReader reader) throws IOException {
+        Map<Integer, String> result = new HashMap<>();
+        String line;
+        while ((line = reader.readLine()) != null) {
+            line = line.trim();
+            int split = indexOfWhitespace(line);
+            if (split <= 0) {
+                continue;
             }
+            int pid;
+            try {
+                pid = Integer.parseInt(line.substring(0, split));
+            } catch (NumberFormatException e) {
+                continue; // the "PID ARGS" header
+            }
+            // ARGS is the whole command line; its first word is the
+            // process, and anything after it is an argument.
+            String command = line.substring(split).trim();
+            int end = indexOfWhitespace(command);
+            if (end > 0) {
+                command = command.substring(0, end);
+            }
+            if (command.isEmpty()) {
+                continue;
+            }
+            // Binaries report a path; the process name is the last segment.
+            int slash = command.lastIndexOf('/');
+            if (slash >= 0 && slash + 1 < command.length()) {
+                command = command.substring(slash + 1);
+            }
+            result.put(pid, command);
         }
         return result;
     }

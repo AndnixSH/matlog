@@ -764,9 +764,12 @@ public class LogcatActivity extends BaseActivity implements FilterListener, LogL
         tagText.setBackgroundColor(backgroundColor);
 
         tag.setOnClickListener(v -> {
-            String tagQuery = (logLine.getTag().contains(" "))
-                    ? ('"' + logLine.getTag() + '"')
-                    : logLine.getTag();
+            // logcat -v time pads short tags with spaces, which are not part
+            // of the tag and would otherwise force the quotes on.
+            String tagName = logLine.getTag().trim();
+            String tagQuery = (tagName.contains(" "))
+                    ? ('"' + tagName + '"')
+                    : tagName;
             setSearchText(SearchCriteria.TAG_KEYWORD + tagQuery);
             dialog.dismiss();
         });
