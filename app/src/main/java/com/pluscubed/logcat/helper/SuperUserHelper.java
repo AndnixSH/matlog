@@ -109,6 +109,14 @@ public class SuperUserHelper {
     }
 
     /**
+     * How long su gets to answer. Long enough for a person to deal with a
+     * superuser prompt; short enough that a su which will never answer - the
+     * stub Magisk ships in some emulators, or a prompt nobody is looking at -
+     * does not keep the app empty for good.
+     */
+    private static final long ROOT_PROBE_TIMEOUT_MS = 20 * 1000L;
+
+    /**
      * Asks su for root and waits for the answer. The user may well be looking at
      * a superuser prompt while this is blocked.
      */
@@ -122,9 +130,10 @@ public class SuperUserHelper {
             outputStream.writeBytes("exit\n");
             outputStream.flush();
 
-            process.waitFor();
-
-            if (process.exitValue() == 0) {
+            Integer exitValue = waitFor(process, ROOT_PROBE_TIMEOUT_MS);
+            if (exitValue == null) {
+                log.d("no root: su did not answer within %d s", ROOT_PROBE_TIMEOUT_MS / 1000);
+            } else if (exitValue == 0) {
                 return true;
             }
         } catch (IOException | InterruptedException e) {
@@ -140,6 +149,24 @@ public class SuperUserHelper {
 
         failedToObtainRoot = true;
         return false;
+    }
+
+    /**
+     * The exit value, or null when the process is still running after
+     * {@code timeoutMillis}. Process.waitFor(long, TimeUnit) needs API 26.
+     */
+    private static Integer waitFor(Process process, long timeoutMillis) throws InterruptedException {
+        long deadline = System.currentTimeMillis() + timeoutMillis;
+        while (true) {
+            try {
+                return process.exitValue();
+            } catch (IllegalThreadStateException stillRunning) {
+                if (System.currentTimeMillis() >= deadline) {
+                    return null;
+                }
+                Thread.sleep(100);
+            }
+        }
     }
 
     public static boolean isFailedToObtainRoot() {
