@@ -8,6 +8,7 @@ import androidx.preference.PreferenceManager;
 import com.pluscubed.logcat.R;
 import com.pluscubed.logcat.data.ColorScheme;
 import com.pluscubed.logcat.util.StringUtil;
+import com.pluscubed.logcat.util.ThemeWrapper;
 import com.pluscubed.logcat.util.UtilLogger;
 import com.pluscubed.logcat.widget.MultipleChoicePreference;
 
@@ -255,14 +256,40 @@ public class PreferenceHelper {
         if (colorScheme == null) {
 
             SharedPreferences sharedPrefs = PreferenceManager.getDefaultSharedPreferences(context);
+            String key = context.getText(R.string.pref_theme).toString();
+
+            if (!sharedPrefs.contains(key)) {
+                // First run: start with the scheme that matches the app theme,
+                // so a dark app does not open on a white log. Saved right away,
+                // so this happens once; from then on the two are independent
+                // and changing the app theme leaves the scheme alone.
+                setColorScheme(context, defaultColorSchemeFor(ThemeWrapper.resolveTheme(context)));
+            }
+
             String colorSchemeName = sharedPrefs.getString(
-                    context.getText(R.string.pref_theme).toString(), context.getText(ColorScheme.Light.getNameResource()).toString());
+                    key, context.getText(ColorScheme.Light.getNameResource()).toString());
 
             colorScheme = ColorScheme.findByPreferenceName(colorSchemeName, context);
+            if (colorScheme == null) {
+                // A value from an older build or an edited preference file.
+                colorScheme = ColorScheme.Light;
+            }
         }
 
         return colorScheme;
 
+    }
+
+    /** The colour scheme a fresh install starts with under each app theme. */
+    private static ColorScheme defaultColorSchemeFor(ThemeWrapper.Theme theme) {
+        switch (theme) {
+            case DARK:
+                return ColorScheme.Dark;
+            case AMOLED:
+                return ColorScheme.Amoled;
+            default:
+                return ColorScheme.Light;
+        }
     }
 
     public static void setColorScheme(Context context, ColorScheme colorScheme) {

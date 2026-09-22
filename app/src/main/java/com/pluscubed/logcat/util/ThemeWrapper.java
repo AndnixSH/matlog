@@ -44,7 +44,9 @@ public abstract class ThemeWrapper {
      * <p>This deliberately does not touch the colour scheme preference. It used
      * to force the colour scheme to match the app theme, which meant picking a
      * dark colour scheme while the light app theme was selected got silently
-     * reverted the next time any activity was created.
+     * reverted the next time any activity was created. The one place the two
+     * meet is a fresh install, where PreferenceHelper seeds the scheme from
+     * this theme once.
      */
     public static Theme resolveTheme(Context context) {
         Theme[] values = Theme.values();
