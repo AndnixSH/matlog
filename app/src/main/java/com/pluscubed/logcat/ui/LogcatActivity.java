@@ -1,5 +1,6 @@
 package com.pluscubed.logcat.ui;
 
+import android.Manifest;
 import android.annotation.SuppressLint;
 import android.content.ClipData;
 import android.content.ClipboardManager;
@@ -223,6 +224,21 @@ public class LogcatActivity extends BaseActivity implements FilterListener, LogL
                 updateUiForFilename();
             });
 
+    /** Android 9 and below: the storage permission that stands in for the folder picker. */
+    private final ActivityResultLauncher<String> mStoragePermission =
+            registerForActivityResult(new ActivityResultContracts.RequestPermission(), granted -> {
+                Runnable pending = mPendingStorageAction;
+                mPendingStorageAction = null;
+
+                if (!granted) {
+                    Toast.makeText(this, R.string.permission_not_granted, Toast.LENGTH_LONG).show();
+                    return;
+                }
+                if (pending != null) {
+                    pending.run();
+                }
+            });
+
     private final ActivityResultLauncher<Uri> mFolderPicker =
             registerForActivityResult(new ActivityResultContracts.OpenDocumentTree(), uri -> {
                 Runnable pending = mPendingStorageAction;
@@ -278,6 +294,14 @@ public class LogcatActivity extends BaseActivity implements FilterListener, LogL
         }
 
         mPendingStorageAction = action;
+
+        if (LogStorage.usesLegacyStorage()) {
+            // Android 9 and below: logs go to /sdcard/matlog as MatLog 1.x did,
+            // and nobody picks a folder. The system asks about storage once.
+            mStoragePermission.launch(Manifest.permission.WRITE_EXTERNAL_STORAGE);
+            return;
+        }
+
         Toast.makeText(this, R.string.storage_folder_prompt, Toast.LENGTH_LONG).show();
 
         // Nudge the picker towards Documents, which is where users expect logs.
@@ -1596,6 +1620,21 @@ public class LogcatActivity extends BaseActivity implements FilterListener, LogL
     }
 
     private void openLogFile(final String filename) {
+        // The live log appends to the same list this file is loaded into, so
+        // it has to be stopped first - and the file opened only once it has
+        // drained, or the two streams get spliced together. This is what made
+        // a finished recording "reset and keep scrolling live".
+        if (mTask != null) {
+            mTask.unPause();
+            mTask.setOnFinished(() -> loadLogFile(filename));
+            mTask.killReader();
+            mTask = null;
+        } else {
+            loadLogFile(filename);
+        }
+    }
+
+    private void loadLogFile(final String filename) {
 
         // do in background to avoid jank
 
