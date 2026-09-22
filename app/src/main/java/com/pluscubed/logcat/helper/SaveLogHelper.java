@@ -39,8 +39,8 @@ import java.util.zip.ZipOutputStream;
  * Saved-log storage.
  *
  * <p>Saved logs live in a "matlog" folder: inside the directory the user
- * granted through the system folder picker on Android 10 and later, or
- * directly under {@code /sdcard} on Android 9 and below (see
+ * granted through the system folder picker on Android 11 and later, or
+ * directly under {@code /sdcard} on Android 10 and below (see
  * {@link LogStorage}). Temporary files - zip staging and the attachment pieces
  * for "send log" - live in the app cache, which needs no permission at all.
  */
@@ -201,7 +201,7 @@ public class SaveLogHelper {
     }
 
     /**
-     * {@code /sdcard/matlog} on Android 9 and below, wrapped as a DocumentFile
+     * {@code /sdcard/matlog} on Android 10 and below, wrapped as a DocumentFile
      * so that the rest of this class reads and lists it the same way as a
      * picked folder. Creating files in it goes through {@link #createFile},
      * not the wrapper.

@@ -20,12 +20,13 @@ import androidx.documentfile.provider.DocumentFile;
 /**
  * Owns the folder that saved logs are written to.
  *
- * <p>On Android 10 and later, logs live in a directory the user picks once
+ * <p>On Android 11 and later, logs live in a directory the user picks once
  * through the system folder picker (Storage Access Framework); the grant is
- * persisted so the choice survives reboots and app restarts. On Android 9 and
- * below, where {@code /sdcard} is still writable with the storage permission,
- * they go straight to {@code /sdcard/matlog} as MatLog 1.x wrote them, and
- * nobody is asked to pick anything.
+ * persisted so the choice survives reboots and app restarts. On Android 10
+ * and below, where {@code /sdcard} is still writable with the storage
+ * permission (Android 10 needs the manifest's requestLegacyExternalStorage
+ * for it), they go straight to {@code /sdcard/matlog} as MatLog 1.x wrote
+ * them, and nobody is asked to pick anything.
  */
 public class LogStorage {
 
@@ -35,11 +36,11 @@ public class LogStorage {
     private LogStorage() {
     }
 
-    // ------------------------------------------------ Android 9 and below
+    // ----------------------------------------------- Android 10 and below
 
     /** True where logs are written to {@code /sdcard/matlog} directly. */
     public static boolean usesLegacyStorage() {
-        return Build.VERSION.SDK_INT <= Build.VERSION_CODES.P;
+        return Build.VERSION.SDK_INT <= Build.VERSION_CODES.Q;
     }
 
     /** Whether the storage permission that {@link #usesLegacyStorage} needs has been granted. */
@@ -48,12 +49,12 @@ public class LogStorage {
                 == PackageManager.PERMISSION_GRANTED;
     }
 
-    /** {@code /sdcard}, the parent of the "matlog" folder on Android 9 and below. */
+    /** {@code /sdcard}, the parent of the "matlog" folder on Android 10 and below. */
     public static File getLegacyRoot() {
         return Environment.getExternalStorageDirectory();
     }
 
-    // ------------------------------------------------ Android 10 and later
+    // ------------------------------------------------ Android 11 and later
 
     /**
      * The persisted folder grant, or null when the user has not chosen one (or

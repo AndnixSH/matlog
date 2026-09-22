@@ -6,13 +6,14 @@
         tools:ignore="ProtectedPermissions" />
 
     <!--
-        Android 9 and below: saved logs go straight to /sdcard/matlog, as in
-        MatLog 1.x. From Android 10 the user picks a folder instead, so the
-        permission is not even requested there.
+        Android 10 and below: saved logs go straight to /sdcard/matlog, as in
+        MatLog 1.x. Android 10 needs requestLegacyExternalStorage for that (see
+        the application element); from Android 11 the flag is ignored and the
+        user picks a folder instead, so the permission is not even requested.
     -->
     <uses-permission
         android:name="android.permission.WRITE_EXTERNAL_STORAGE"
-        android:maxSdkVersion="28" />
+        android:maxSdkVersion="29" />
 
     <uses-permission android:name="android.permission.FOREGROUND_SERVICE" />
     <!--
@@ -30,6 +31,7 @@
 
     <application
         android:allowBackup="true"
+        android:requestLegacyExternalStorage="true"
         android:icon="@mipmap/ic_launcher"
         android:label="${appName}"
         android:name=".App"

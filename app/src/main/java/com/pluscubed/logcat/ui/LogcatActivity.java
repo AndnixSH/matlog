@@ -230,7 +230,7 @@ public class LogcatActivity extends BaseActivity implements FilterListener, LogL
                 updateUiForFilename();
             });
 
-    /** Android 9 and below: the storage permission that stands in for the folder picker. */
+    /** Android 10 and below: the storage permission that stands in for the folder picker. */
     private final ActivityResultLauncher<String> mStoragePermission =
             registerForActivityResult(new ActivityResultContracts.RequestPermission(), granted -> {
                 Runnable pending = mPendingStorageAction;
@@ -302,7 +302,7 @@ public class LogcatActivity extends BaseActivity implements FilterListener, LogL
         mPendingStorageAction = action;
 
         if (LogStorage.usesLegacyStorage()) {
-            // Android 9 and below: logs go to /sdcard/matlog as MatLog 1.x did,
+            // Android 10 and below: logs go to /sdcard/matlog as MatLog 1.x did,
             // and nobody picks a folder. The system asks about storage once.
             mStoragePermission.launch(Manifest.permission.WRITE_EXTERNAL_STORAGE);
             return;
