@@ -50,6 +50,7 @@ import androidx.appcompat.content.res.AppCompatResources;
 import androidx.appcompat.view.menu.MenuBuilder;
 import androidx.appcompat.widget.SearchView;
 import androidx.appcompat.widget.Toolbar;
+import androidx.coordinatorlayout.widget.CoordinatorLayout;
 import androidx.core.content.ContextCompat;
 import androidx.core.content.FileProvider;
 import androidx.cursoradapter.widget.CursorAdapter;
@@ -58,6 +59,7 @@ import androidx.recyclerview.widget.LinearLayoutManager;
 import androidx.recyclerview.widget.RecyclerView;
 import androidx.vectordrawable.graphics.drawable.VectorDrawableCompat;
 
+import com.google.android.material.behavior.HideBottomViewOnScrollBehavior;
 import com.google.android.material.bottomappbar.BottomAppBar;
 import com.google.android.material.dialog.MaterialAlertDialogBuilder;
 import com.google.android.material.floatingactionbutton.FloatingActionButton;
@@ -378,6 +380,37 @@ public class LogcatActivity extends BaseActivity implements FilterListener, LogL
         flexOptionsMenu(mAppBar.getMenu());
         mAppBar.setOnMenuItemClickListener(this::onOptionsItemSelected);
         mAppBar.setOverflowIcon(VectorDrawableCompat.create(getResources(), R.drawable.ic_more_vert, getTheme()));
+
+        // The bar slides away when the log is scrolled down, and the record
+        // button rides along in its cradle, so the two leave and come back as
+        // one piece. Two things would otherwise hold the button back:
+        // - BottomAppBar gives the button a bottom margin, and CoordinatorLayout
+        //   keeps an anchored child above its bottom margin; that is how the
+        //   library leaves the button on screen when the bar hides. The bar
+        //   leaves a margin set before the first layout alone, and a negative
+        //   one lets the button follow the bar right off the screen.
+        // - The bar slides by its own height only, while the button sticks up
+        //   out of the cradle by half of its own. The bar travels that much
+        //   further, plus the reach of the button's shadow.
+        CoordinatorLayout.LayoutParams fabParams =
+                (CoordinatorLayout.LayoutParams) mFab.getLayoutParams();
+        fabParams.bottomMargin = -getResources().getDisplayMetrics().heightPixels;
+        mFab.addOnLayoutChangeListener((v, left, top, right, bottom,
+                                        oldLeft, oldTop, oldRight, oldBottom) -> {
+            if (bottom - top != oldBottom - oldTop) {
+                mAppBar.getBehavior().setAdditionalHiddenOffsetY(mAppBar,
+                        (bottom - top) / 2 + Math.round(mFab.getCompatElevation()));
+            }
+        });
+        // Out of sight, the button leaves keyboard focus and accessibility
+        // the way the bar does.
+        mAppBar.addOnScrollStateChangedListener((bar, state) -> {
+            boolean away = state == HideBottomViewOnScrollBehavior.STATE_SCROLLED_DOWN;
+            mFab.setFocusable(!away);
+            mFab.setImportantForAccessibility(away
+                    ? View.IMPORTANT_FOR_ACCESSIBILITY_NO_HIDE_DESCENDANTS
+                    : View.IMPORTANT_FOR_ACCESSIBILITY_AUTO);
+        });
 
         // Predictive back (default from targetSdk 36) routes through the
         // dispatcher rather than onBackPressed.
@@ -1787,6 +1820,18 @@ public class LogcatActivity extends BaseActivity implements FilterListener, LogL
 
                 // if the bottom of the list isn't visible anymore, then stop autoscrolling
                 mAutoscrollToBottom = (layoutManager.findLastCompletelyVisibleItemPosition() == recyclerView.getAdapter().getItemCount() - 1);
+
+                // A hidden bottom bar only comes back on an upward scroll. Once
+                // the list no longer scrolls at all - filtered down to a few
+                // lines, or cleared - there is no such scroll left to make, so
+                // bring the bar and the record button back here. RecyclerView
+                // also calls this, with dy 0, after a layout that changes what
+                // is on screen, which is exactly when that happens.
+                if (mAppBar.isScrolledDown()
+                        && !recyclerView.canScrollVertically(-1)
+                        && !recyclerView.canScrollVertically(1)) {
+                    mAppBar.performShow();
+                }
             }
         });
 

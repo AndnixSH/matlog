@@ -66,30 +66,40 @@
             android:scrollbars="vertical"/>
 
     <!--
-        paddingBottomSystemWindowInsets is turned off on purpose: the root
-        CoordinatorLayout already consumes the system-bar insets (it is
-        fitsSystemWindows), so the app bar never actually receives them. Left
-        on, BottomAppBar reserves navigation-bar padding inside its own fixed
-        actionBarSize height anyway, which squeezes the menu row and clips the
-        bottom off its icons.
+        The bar runs down to the bottom edge of the screen and pads its own
+        content clear of the navigation bar or taskbar, so on edge-to-edge
+        devices its colour fills the strip behind the gesture pill. Laid out
+        above the insets instead, it left a band of the log area's colour
+        underneath and looked like a card floating over the log. It takes
+        three settings together:
+        - fitsSystemWindows: the root CoordinatorLayout lays a child that fits
+          system windows out edge to edge rather than inside the insets;
+        - padding*SystemWindowInsets: the bar then keeps its menu row clear of
+          the navigation bar itself;
+        - wrap_content: that padding adds to the bar's height. Inside a fixed
+          actionBarSize height it was taken out of the menu row and clipped
+          the icons, which is why it had been switched off (commit 0079845).
+        Below Android 15 the window is not edge to edge, the system paints the
+        navigation bar itself and the inset is simply 0.
 
-        hideOnScroll is off as well. Sliding the bar away on scroll moved the
-        anchored record button only by the bar's height, so its upper half
-        stayed poking out of the bottom edge - most visibly on a tablet, where
-        it looked cut off by the taskbar. The controls of a log viewer are
-        better always reachable anyway.
+        No elevation: the bar is part of the screen edge, not something
+        floating over the log. It slides away when the log is scrolled down,
+        and LogcatActivity has the record button ride along in its cradle.
     -->
     <com.google.android.material.bottomappbar.BottomAppBar
         android:id="@+id/bottom_appbar"
         android:layout_width="match_parent"
-        android:layout_height="?actionBarSize"
+        android:layout_height="wrap_content"
         android:layout_gravity="bottom"
+        android:fitsSystemWindows="true"
         app:fabCradleRoundedCornerRadius="4dp"
         app:popupTheme="?popupMenuStyle"
         app:backgroundTint="?colorPrimary"
-        app:hideOnScroll="false"
-        app:elevation="4dp"
-        app:paddingBottomSystemWindowInsets="false"/>
+        app:hideOnScroll="true"
+        app:elevation="0dp"
+        app:paddingBottomSystemWindowInsets="true"
+        app:paddingLeftSystemWindowInsets="true"
+        app:paddingRightSystemWindowInsets="true"/>
 
     <!--
         No android:layout_gravity here on purpose. BottomAppBar only seats an
