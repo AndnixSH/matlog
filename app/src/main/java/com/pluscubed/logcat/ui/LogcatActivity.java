@@ -151,7 +151,7 @@ public class LogcatActivity extends BaseActivity implements FilterListener, LogL
      * its own thread while log lines add to it on this one.
      */
     private Set<String> mSearchSuggestionsSet = new CopyOnWriteArraySet<>();
-    /** Only the tags seen in the log, for completing {@code tag:} values. */
+    /** Only the tags seen in the log on screen, for completing {@code tag:} values. */
     private final Set<String> mSeenTags = new CopyOnWriteArraySet<>();
     /**
      * Only the saved filters, for completing bare text in the search box. Tags
@@ -1732,6 +1732,11 @@ public class LogcatActivity extends BaseActivity implements FilterListener, LogL
     public void resetDisplayedLog(String filename) {
         mLogListAdapter.clear();
         mCurrentlyOpenLog = filename;
+        // The search box completes tag: from the log on screen, so a saved
+        // log starts over with its own tags rather than keeping those the
+        // live log had collected, and the live log with its own again. The
+        // dialogs' suggestions stay as they were: recording is always live.
+        mSeenTags.clear();
         mCollapsedMode = !PreferenceHelper.getExpandedByDefaultPreference(getApplicationContext());
         addFiltersToSuggestions(); // filters are what initial populate the suggestions
         updateUiForFilename();
