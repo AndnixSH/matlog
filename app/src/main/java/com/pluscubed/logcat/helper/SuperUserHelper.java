@@ -277,27 +277,20 @@ public class SuperUserHelper {
 
             final Process suProcess = Runtime.getRuntime().exec(suCommand);
 
-            new Thread(() -> {
-                try (PrintStream outputStream = new PrintStream(new BufferedOutputStream(suProcess.getOutputStream(), 8192))) {
-                    outputStream.println("ps");
-                    outputStream.println("exit");
-                    outputStream.flush();
-                }
-
-            }).run();
-
-            if (suProcess != null) {
-                try {
-                    suProcess.waitFor();
-                } catch (InterruptedException e) {
-                    log.e(e, "cannot get pids");
-                }
+            try (PrintStream outputStream = new PrintStream(new BufferedOutputStream(suProcess.getOutputStream(), 8192))) {
+                outputStream.println("ps");
+                outputStream.println("exit");
+                outputStream.flush();
             }
 
-
+            // Read all of it before waiting for su to exit. The process list
+            // outgrows the pipe (on Android 11, at least), and then ps blocks
+            // writing it while we block waiting for ps: every root logcat
+            // hung in its kill, and the log never loaded.
             try (BufferedReader bufferedReader = new BufferedReader(new InputStreamReader(suProcess.getInputStream()), 8192);) {
-                while (bufferedReader.ready()) {
-                    String[] line = SPACES_PATTERN.split(bufferedReader.readLine());
+                String row;
+                while ((row = bufferedReader.readLine()) != null) {
+                    String[] line = SPACES_PATTERN.split(row);
                     if (line.length >= 3) {
                         try {
                             if (pid == Integer.parseInt(line[2])) {
@@ -307,6 +300,13 @@ public class SuperUserHelper {
                         }
                     }
                 }
+            }
+
+            try {
+                suProcess.waitFor();
+            } catch (InterruptedException e) {
+                log.e(e, "cannot get pids");
+                Thread.currentThread().interrupt();
             }
         } catch (IOException e1) {
             log.e(e1, "cannot get process ids");
