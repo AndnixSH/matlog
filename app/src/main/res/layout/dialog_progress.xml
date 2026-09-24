@@ -15,18 +15,30 @@
     android:paddingEnd="24dp"
     android:paddingBottom="16dp">
 
+    <!--
+        textAppearanceBody2 is the Material Components (M2) size for dialog
+        messages. The Material 3 textAppearanceBodyMedium that stood here is not
+        set by the app's M2 themes, so the text fell back to TextView's
+        built-in 15 raw pixels: barely legible on a dense screen.
+    -->
     <TextView
         android:id="@+id/message"
         android:layout_width="match_parent"
         android:layout_height="wrap_content"
         android:layout_marginBottom="16dp"
-        android:textAppearance="?attr/textAppearanceBodyMedium" />
+        android:textAppearance="?attr/textAppearanceBody2" />
 
+    <!--
+        The accent, as for the main screen's indicator: the default,
+        colorPrimary, is the app bar colour here - white in the light theme,
+        near-black in the dark ones - so the spinner vanished into the dialog.
+    -->
     <com.google.android.material.progressindicator.CircularProgressIndicator
         android:id="@+id/progress"
         android:layout_width="wrap_content"
         android:layout_height="wrap_content"
         android:indeterminate="true"
+        app:indicatorColor="?colorAccent"
         app:indicatorSize="64dp"
         app:trackThickness="6dp" />
 
