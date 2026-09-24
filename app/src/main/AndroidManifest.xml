@@ -8,8 +8,10 @@
     <!--
         Android 10 and below: saved logs go straight to /sdcard/matlog, as in
         MatLog 1.x. Android 10 needs requestLegacyExternalStorage for that (see
-        the application element); from Android 11 the flag is ignored and the
-        user picks a folder instead, so the permission is not even requested.
+        the application element); from Android 11 the flag is ignored and logs
+        go to Documents/matlog, which needs no permission, so this one is not
+        even requested. (The F-Droid build's manifest adds all-files access for
+        rooted devices.)
     -->
     <uses-permission
         android:name="android.permission.WRITE_EXTERNAL_STORAGE"

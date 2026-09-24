@@ -38,11 +38,12 @@ import java.util.zip.ZipOutputStream;
 /**
  * Saved-log storage.
  *
- * <p>Saved logs live in a "matlog" folder: inside the directory the user
- * granted through the system folder picker on Android 11 and later, or
- * directly under {@code /sdcard} on Android 10 and below (see
- * {@link LogStorage}). Temporary files - zip staging and the attachment pieces
- * for "send log" - live in the app cache, which needs no permission at all.
+ * <p>Saved logs live in a "matlog" folder: under {@code /sdcard} on Android
+ * 10 and below and wherever root has given the app all-files access, under
+ * Documents on Android 11 and later, or inside a directory the user picked
+ * through the system folder picker (see {@link LogStorage}). Temporary files -
+ * zip staging and the attachment pieces for "send log" - live in the app
+ * cache, which needs no permission at all.
  */
 public class SaveLogHelper {
 
@@ -53,7 +54,7 @@ public class SaveLogHelper {
     private static final String TEMP_ZIP_FILENAME = "logs";
     private static final int BUFFER = 0x1000; // 4K
 
-    /** Folder created inside whatever directory the user picks. */
+    /** Folder created inside whichever directory logs go to. */
     public static final String SAVED_LOGS_DIR = "matlog";
     private static final String TMP_DIR = "tmp";
 
@@ -138,13 +139,13 @@ public class SaveLogHelper {
     }
 
     /**
-     * The "matlog" folder inside the user-granted directory, creating it (and
-     * asking for nothing - the grant already covers it) when {@code create} is
-     * true.
+     * The "matlog" folder logs go to, creating it (and asking for nothing)
+     * when {@code create} is true.
      */
     private static DocumentFile getSavedLogsDirectory(Context context, boolean create) {
-        if (LogStorage.usesLegacyStorage()) {
-            return getLegacySavedLogsDirectory(context, create);
+        LogStorage.Location location = LogStorage.getLocation(context);
+        if (location != LogStorage.Location.PICKED) {
+            return getDirectSavedLogsDirectory(context, location, create);
         }
 
         Uri treeUri = LogStorage.getTreeUri(context);
@@ -201,16 +202,18 @@ public class SaveLogHelper {
     }
 
     /**
-     * {@code /sdcard/matlog} on Android 10 and below, wrapped as a DocumentFile
-     * so that the rest of this class reads and lists it the same way as a
-     * picked folder. Creating files in it goes through {@link #createFile},
-     * not the wrapper.
+     * {@code /sdcard/matlog} or {@code Documents/matlog}, wrapped as a
+     * DocumentFile so that the rest of this class reads and lists it the same
+     * way as a picked folder. Creating files in it goes through
+     * {@link #createFile}, not the wrapper. In Documents, listing it only
+     * shows the files this app created: the storage hides the rest.
      */
-    private static DocumentFile getLegacySavedLogsDirectory(Context context, boolean create) {
-        if (!LogStorage.hasLegacyPermission(context)) {
+    private static DocumentFile getDirectSavedLogsDirectory(Context context, LogStorage.Location location,
+                                                            boolean create) {
+        if (!LogStorage.canWrite(context, location)) {
             return null;
         }
-        File dir = new File(LogStorage.getLegacyRoot(), SAVED_LOGS_DIR);
+        File dir = new File(LogStorage.getDirectRoot(location), SAVED_LOGS_DIR);
         if (!dir.isDirectory()) {
             if (!create) {
                 return null;
@@ -245,9 +248,10 @@ public class SaveLogHelper {
     }
 
     public static boolean hasSavedLogsFolder(Context context) {
-        if (LogStorage.usesLegacyStorage()) {
+        LogStorage.Location location = LogStorage.getLocation(context);
+        if (location != LogStorage.Location.PICKED) {
             // The folder itself is made on the first save.
-            return LogStorage.hasLegacyPermission(context);
+            return LogStorage.canWrite(context, location);
         }
         return getSavedLogsDirectory(context, false) != null;
     }
@@ -260,7 +264,7 @@ public class SaveLogHelper {
         if (hasSavedLogsFolder(context)) {
             return true;
         }
-        Toast.makeText(context, LogStorage.usesLegacyStorage()
+        Toast.makeText(context, LogStorage.getLocation(context) == LogStorage.Location.SDCARD
                 ? R.string.permission_not_granted
                 : R.string.sd_card_not_found, Toast.LENGTH_LONG).show();
         return false;

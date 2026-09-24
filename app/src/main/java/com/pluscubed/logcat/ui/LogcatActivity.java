@@ -14,7 +14,6 @@ import android.os.Bundle;
 import android.os.Handler;
 import android.os.Looper;
 import android.provider.BaseColumns;
-import android.provider.DocumentsContract;
 import android.text.Editable;
 import android.text.Spanned;
 import android.text.TextUtils;
@@ -215,7 +214,7 @@ public class LogcatActivity extends BaseActivity implements FilterListener, LogL
 
     private final ExecutorService mExecutor = Executors.newCachedThreadPool();
 
-    /** Action to run once the user has granted a folder, if one was pending. */
+    /** Android 10 and below: action to run once the storage permission is granted. */
     private Runnable mPendingStorageAction;
 
     private final ActivityResultLauncher<Intent> mSettingsLauncher =
@@ -232,7 +231,7 @@ public class LogcatActivity extends BaseActivity implements FilterListener, LogL
                 updateUiForFilename();
             });
 
-    /** Android 10 and below: the storage permission that stands in for the folder picker. */
+    /** Android 10 and below: the permission /sdcard/matlog needs. */
     private final ActivityResultLauncher<String> mStoragePermission =
             registerForActivityResult(new ActivityResultContracts.RequestPermission(), granted -> {
                 Runnable pending = mPendingStorageAction;
@@ -242,22 +241,6 @@ public class LogcatActivity extends BaseActivity implements FilterListener, LogL
                     Toast.makeText(this, R.string.permission_not_granted, Toast.LENGTH_LONG).show();
                     return;
                 }
-                if (pending != null) {
-                    pending.run();
-                }
-            });
-
-    private final ActivityResultLauncher<Uri> mFolderPicker =
-            registerForActivityResult(new ActivityResultContracts.OpenDocumentTree(), uri -> {
-                Runnable pending = mPendingStorageAction;
-                mPendingStorageAction = null;
-
-                if (uri == null) {
-                    Toast.makeText(this, R.string.storage_folder_not_chosen, Toast.LENGTH_LONG).show();
-                    return;
-                }
-
-                LogStorage.setTreeUri(this, uri);
                 if (pending != null) {
                     pending.run();
                 }
@@ -289,36 +272,43 @@ public class LogcatActivity extends BaseActivity implements FilterListener, LogL
     }
 
     /**
-     * Runs {@code action} if a log folder has been granted; otherwise asks the
-     * user to pick one first and runs it afterwards.
+     * Runs {@code action} once saved logs have somewhere to go.
      *
-     * <p>This replaces the old WRITE_EXTERNAL_STORAGE runtime request, which
-     * silently reported "granted" on API 30+ without conferring any access.
+     * <p>Only Android 10 and below ask for anything: the storage permission
+     * that /sdcard/matlog needs. Android 11 and later save to Documents/matlog,
+     * which needs no permission - unless root can first give the app all-files
+     * access, so that logs go to /sdcard/matlog, or the user picked a folder in
+     * the settings.
      */
     private void ensureStorageThen(Runnable action) {
-        if (SaveLogHelper.hasSavedLogsFolder(this)) {
-            action.run();
-            return;
-        }
-
-        mPendingStorageAction = action;
-
-        if (LogStorage.usesLegacyStorage()) {
-            // Android 10 and below: logs go to /sdcard/matlog as MatLog 1.x did,
-            // and nobody picks a folder. The system asks about storage once.
+        if (android.os.Build.VERSION.SDK_INT <= android.os.Build.VERSION_CODES.Q) {
+            if (SaveLogHelper.hasSavedLogsFolder(this)) {
+                action.run();
+                return;
+            }
+            mPendingStorageAction = action;
             mStoragePermission.launch(Manifest.permission.WRITE_EXTERNAL_STORAGE);
             return;
         }
 
-        Toast.makeText(this, R.string.storage_folder_prompt, Toast.LENGTH_LONG).show();
-
-        // Nudge the picker towards Documents, which is where users expect logs.
-        Uri initial = null;
-        if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.O) {
-            initial = DocumentsContract.buildDocumentUri(
-                    "com.android.externalstorage.documents", "primary:Documents");
+        if (!LogStorage.shouldRequestAllFilesAccess(this)) {
+            action.run();
+            return;
         }
-        mFolderPicker.launch(initial);
+
+        // Settling root may still be waiting on the su prompt, so find out off
+        // the main thread. Whatever the answer, the action runs: without
+        // all-files access it simply saves to Documents/matlog.
+        mExecutor.execute(() -> {
+            if (SuperUserHelper.resolveAccessMode(this) == SuperUserHelper.AccessMode.ROOT) {
+                LogStorage.grantAllFilesAccessAsRoot(this);
+            }
+            runOnUiThread(() -> {
+                if (!isFinishing() && !isDestroyed()) {
+                    action.run();
+                }
+            });
+        });
     }
 
     private CircularProgressIndicator progressBar() {

@@ -214,6 +214,45 @@ public class SuperUserHelper {
     }
 
     /**
+     * Runs one shell command through the su that granted root, and waits for
+     * it. For one-off commands only; logcat goes through RuntimeHelper.
+     *
+     * @return whether the command ran and exited with 0
+     */
+    public static boolean runAsRoot(String command) {
+        Process process = null;
+        try {
+            process = Runtime.getRuntime().exec(suCommand);
+
+            DataOutputStream outputStream = new DataOutputStream(process.getOutputStream());
+            outputStream.writeBytes(command + "\n");
+            // exit with the command's own status
+            outputStream.writeBytes("exit\n");
+            outputStream.flush();
+
+            Integer exitValue = waitFor(process, ROOT_PROBE_TIMEOUT_MS);
+            if (exitValue == null) {
+                log.e("%s did not finish within %d s", command, ROOT_PROBE_TIMEOUT_MS / 1000);
+                return false;
+            }
+            if (exitValue != 0) {
+                log.e("%s exited with %d", command, exitValue);
+            }
+            return exitValue == 0;
+        } catch (IOException e) {
+            log.e(e, "cannot run %s as root", command);
+            return false;
+        } catch (InterruptedException e) {
+            Thread.currentThread().interrupt();
+            return false;
+        } finally {
+            if (process != null) {
+                process.destroy();
+            }
+        }
+    }
+
+    /**
      * The exit value, or null when the process is still running after
      * {@code timeoutMillis}. Process.waitFor(long, TimeUnit) needs API 26.
      */

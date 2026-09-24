@@ -23,6 +23,7 @@ import androidx.core.content.IntentCompat;
 
 import com.pluscubed.logcat.data.LogLine;
 import com.pluscubed.logcat.data.SearchCriteria;
+import com.pluscubed.logcat.helper.LogStorage;
 import com.pluscubed.logcat.helper.PreferenceHelper;
 import com.pluscubed.logcat.helper.SaveLogHelper;
 import com.pluscubed.logcat.helper.ServiceHelper;
@@ -223,6 +224,14 @@ public class LogcatRecordingService extends Service {
         // Make sure we know how we are allowed to read logs. This may block on
         // the su prompt, which is acceptable here on the worker thread.
         SuperUserHelper.resolveAccessMode(this);
+
+        // A recording started from the widget has not been through the app's
+        // save path, so give root the same chance to move logs to
+        // /sdcard/matlog before the file is created.
+        if (LogStorage.shouldRequestAllFilesAccess(this)
+                && SuperUserHelper.getAccessMode() == SuperUserHelper.AccessMode.ROOT) {
+            LogStorage.grantAllFilesAccessAsRoot(this);
+        }
 
         String filename = intent.getStringExtra(EXTRA_FILENAME);
         String queryText = intent.getStringExtra(EXTRA_QUERY_FILTER);

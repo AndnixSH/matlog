@@ -9,9 +9,11 @@ import android.content.pm.PackageManager;
 import android.net.Uri;
 import android.os.Build;
 import android.os.Environment;
+import android.provider.DocumentsContract;
 import android.util.Log;
 
 import java.io.File;
+import java.util.Arrays;
 import java.util.List;
 
 import androidx.core.content.ContextCompat;
@@ -20,41 +22,159 @@ import androidx.documentfile.provider.DocumentFile;
 /**
  * Owns the folder that saved logs are written to.
  *
- * <p>On Android 11 and later, logs live in a directory the user picks once
- * through the system folder picker (Storage Access Framework); the grant is
- * persisted so the choice survives reboots and app restarts. On Android 10
- * and below, where {@code /sdcard} is still writable with the storage
- * permission (Android 10 needs the manifest's requestLegacyExternalStorage
- * for it), they go straight to {@code /sdcard/matlog} as MatLog 1.x wrote
- * them, and nobody is asked to pick anything.
+ * <p>On Android 10 and below, where {@code /sdcard} is still writable with the
+ * storage permission (Android 10 needs the manifest's
+ * requestLegacyExternalStorage for it), logs go straight to
+ * {@code /sdcard/matlog} as MatLog 1.x wrote them.
+ *
+ * <p>On Android 11 and later they go to {@code Documents/matlog}. Any app may
+ * create files there without a permission, but it only sees the files it
+ * created itself: logs saved before a reinstall, or by anything else, are not
+ * listed. Two things change that:
+ * <ul>
+ *   <li>root: the app gives itself all-files access (see
+ *       {@link #grantAllFilesAccessAsRoot}) and logs go to
+ *       {@code /sdcard/matlog}, where it sees everything. Only the F-Droid
+ *       build declares that permission, because Google Play restricts it.</li>
+ *   <li>a folder the user picks in the settings (Storage Access Framework).
+ *       The grant is persisted, and a picked folder always wins.</li>
+ * </ul>
  */
 public class LogStorage {
+
+    /** Where saved logs go; each keeps them in a "matlog" folder. */
+    public enum Location {
+        /** {@code /sdcard}: Android 10 and below, or with all-files access. */
+        SDCARD,
+        /** {@code /sdcard/Documents}, open to any app for its own files on Android 11 and later. */
+        DOCUMENTS,
+        /** The folder the user picked. */
+        PICKED
+    }
 
     private static final String PREFS_NAME = "log_storage";
     private static final String KEY_TREE_URI = "tree_uri";
 
+    private static Boolean declaresAllFilesAccess;
+
+    /** Asking root for all-files access is done once per process at most. */
+    private static volatile boolean allFilesAccessRequested;
+
     private LogStorage() {
     }
 
-    // ----------------------------------------------- Android 10 and below
-
-    /** True where logs are written to {@code /sdcard/matlog} directly. */
-    public static boolean usesLegacyStorage() {
-        return Build.VERSION.SDK_INT <= Build.VERSION_CODES.Q;
+    public static Location getLocation(Context context) {
+        if (Build.VERSION.SDK_INT <= Build.VERSION_CODES.Q) {
+            return Location.SDCARD;
+        }
+        if (getTreeUri(context) != null) {
+            return Location.PICKED;
+        }
+        return hasAllFilesAccess(context) ? Location.SDCARD : Location.DOCUMENTS;
     }
 
-    /** Whether the storage permission that {@link #usesLegacyStorage} needs has been granted. */
-    public static boolean hasLegacyPermission(Context context) {
-        return ContextCompat.checkSelfPermission(context, Manifest.permission.WRITE_EXTERNAL_STORAGE)
-                == PackageManager.PERMISSION_GRANTED;
+    /**
+     * The folder that holds the "matlog" folder for {@link Location#SDCARD} and
+     * {@link Location#DOCUMENTS}, which are written as plain files.
+     */
+    public static File getDirectRoot(Location location) {
+        File sdcard = Environment.getExternalStorageDirectory();
+        return location == Location.DOCUMENTS
+                ? new File(sdcard, Environment.DIRECTORY_DOCUMENTS)
+                : sdcard;
     }
 
-    /** {@code /sdcard}, the parent of the "matlog" folder on Android 10 and below. */
-    public static File getLegacyRoot() {
-        return Environment.getExternalStorageDirectory();
+    /**
+     * Whether saved logs can be written where {@link #getLocation} says. Only
+     * Android 10 and below need to ask for something: the storage permission.
+     */
+    public static boolean canWrite(Context context, Location location) {
+        switch (location) {
+            case SDCARD:
+                if (Build.VERSION.SDK_INT <= Build.VERSION_CODES.Q) {
+                    return ContextCompat.checkSelfPermission(context, Manifest.permission.WRITE_EXTERNAL_STORAGE)
+                            == PackageManager.PERMISSION_GRANTED;
+                }
+                return hasAllFilesAccess(context);
+            case DOCUMENTS:
+                return true;
+            default:
+                return getPickedFolder(context) != null;
+        }
     }
 
-    // ------------------------------------------------ Android 11 and later
+    // ---------------------------------------------------- all-files access
+
+    /**
+     * Whether this build can be given all-files access at all: only one that
+     * declares MANAGE_EXTERNAL_STORAGE can. Without the declaration the app
+     * op alone would make {@link Environment#isExternalStorageManager} say yes
+     * while the storage itself still refused the app.
+     */
+    public static boolean canHaveAllFilesAccess(Context context) {
+        if (Build.VERSION.SDK_INT < Build.VERSION_CODES.R) {
+            return false;
+        }
+        if (declaresAllFilesAccess == null) {
+            boolean declared = false;
+            try {
+                String[] requested = context.getPackageManager()
+                        .getPackageInfo(context.getPackageName(), PackageManager.GET_PERMISSIONS)
+                        .requestedPermissions;
+                declared = requested != null && Arrays.asList(requested)
+                        .contains(Manifest.permission.MANAGE_EXTERNAL_STORAGE);
+            } catch (PackageManager.NameNotFoundException e) {
+                Log.w("MatLogStorage", "cannot read our own permissions", e);
+            }
+            declaresAllFilesAccess = declared;
+        }
+        return declaresAllFilesAccess;
+    }
+
+    public static boolean hasAllFilesAccess(Context context) {
+        return Build.VERSION.SDK_INT >= Build.VERSION_CODES.R
+                && canHaveAllFilesAccess(context) && Environment.isExternalStorageManager();
+    }
+
+    /**
+     * Whether to ask root for all-files access before saving: logs are about
+     * to go to Documents/matlog, this build could have /sdcard/matlog instead,
+     * and root is available or not settled yet.
+     */
+    public static boolean shouldRequestAllFilesAccess(Context context) {
+        if (allFilesAccessRequested || !canHaveAllFilesAccess(context)
+                || getLocation(context) != Location.DOCUMENTS) {
+            return false;
+        }
+        return !SuperUserHelper.isResolved()
+                || SuperUserHelper.getAccessMode() == SuperUserHelper.AccessMode.ROOT;
+    }
+
+    /**
+     * Has su give this app all-files access, the "Allow access to manage all
+     * files" switch in Settings, so that logs go to {@code /sdcard/matlog}.
+     * It blocks on su, so it must not run on the main thread, and is only
+     * worth calling once root access is settled.
+     *
+     * @return whether the app has all-files access now
+     */
+    public static boolean grantAllFilesAccessAsRoot(Context context) {
+        if (Build.VERSION.SDK_INT < Build.VERSION_CODES.R || !canHaveAllFilesAccess(context)) {
+            return false;
+        }
+        if (!Environment.isExternalStorageManager()) {
+            allFilesAccessRequested = true;
+            // --uid sets the mode the way the Settings switch does, so the
+            // switch shows it and can take it back. "cmd appops" rather than
+            // "appops": that is only a wrapper script, and MuMu 12 lacks it.
+            boolean ran = SuperUserHelper.runAsRoot("cmd appops set --uid "
+                    + context.getPackageName() + " MANAGE_EXTERNAL_STORAGE allow");
+            Log.i("MatLogStorage", "granting all-files access as root: " + (ran ? "done" : "failed"));
+        }
+        return Environment.isExternalStorageManager();
+    }
+
+    // ------------------------------------------------------ picked folder
 
     /**
      * The persisted folder grant, or null when the user has not chosen one (or
@@ -88,8 +208,8 @@ public class LogStorage {
             Log.i("MatLogStorage", "took persistable permission for " + treeUri);
         } catch (SecurityException e) {
             // Some providers do not offer a persistable grant. Remember the
-            // choice anyway; getTreeUri() will keep rejecting it until a
-            // usable grant exists, and the user is re-prompted.
+            // choice anyway; getTreeUri() keeps rejecting it until a usable
+            // grant exists, and logs go to the default folder meanwhile.
             Log.w("MatLogStorage", "could not persist permission for " + treeUri, e);
         }
         context.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
@@ -129,10 +249,21 @@ public class LogStorage {
         return folder;
     }
 
-    public static boolean hasFolder(Context context) {
-        if (usesLegacyStorage()) {
-            return hasLegacyPermission(context);
+    /** The picked folder as the user would name it, e.g. "Documents", or null. */
+    public static String describePickedFolder(Context context) {
+        Uri treeUri = getTreeUri(context);
+        if (treeUri == null) {
+            return null;
         }
-        return getPickedFolder(context) != null;
+        // External storage ids read "primary:Documents/Logs"; the part after
+        // the colon is the path the user saw in the picker.
+        String id = DocumentsContract.getTreeDocumentId(treeUri);
+        int colon = id.indexOf(':');
+        if (colon >= 0 && colon < id.length() - 1) {
+            return id.substring(colon + 1);
+        }
+        DocumentFile folder = DocumentFile.fromTreeUri(context, treeUri);
+        String name = folder != null ? folder.getName() : null;
+        return name != null ? name : id;
     }
 }

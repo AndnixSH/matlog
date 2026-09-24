@@ -1,12 +1,18 @@
 package com.pluscubed.logcat.ui;
 
+import android.content.Context;
 import android.content.Intent;
+import android.net.Uri;
+import android.os.Build;
 import android.os.Bundle;
+import android.provider.DocumentsContract;
 import android.text.TextUtils;
 import android.view.MenuItem;
 import android.widget.Toast;
 
 import androidx.activity.OnBackPressedCallback;
+import androidx.activity.result.ActivityResultLauncher;
+import androidx.activity.result.contract.ActivityResultContracts;
 import androidx.appcompat.content.res.AppCompatResources;
 import androidx.appcompat.widget.Toolbar;
 import androidx.fragment.app.Fragment;
@@ -18,8 +24,10 @@ import androidx.preference.Preference;
 import androidx.preference.PreferenceFragmentCompat;
 import androidx.preference.SwitchPreferenceCompat;
 
+import com.google.android.material.dialog.MaterialAlertDialogBuilder;
 import com.pluscubed.logcat.R;
 import com.pluscubed.logcat.data.LogLine;
+import com.pluscubed.logcat.helper.LogStorage;
 import com.pluscubed.logcat.helper.PackageHelper;
 import com.pluscubed.logcat.helper.PreferenceHelper;
 import com.pluscubed.logcat.util.ArrayUtil;
@@ -95,7 +103,17 @@ public class SettingsActivity extends BaseActivity {
         private MultipleChoicePreference bufferPreference;
         private Preference mThemePreference;
         private Preference mAboutPreference;
+        private Preference logFolderPreference;
         private SwitchPreferenceCompat scrubberPreference;
+
+        private final ActivityResultLauncher<Uri> folderPicker =
+                registerForActivityResult(new ActivityResultContracts.OpenDocumentTree(), uri -> {
+                    // Backing out of the picker leaves things as they were.
+                    if (uri != null) {
+                        LogStorage.setTreeUri(requireContext(), uri);
+                        updateLogFolderSummary();
+                    }
+                });
 
         private boolean bufferChanged = false;
 
@@ -168,6 +186,71 @@ public class SettingsActivity extends BaseActivity {
                 LogLine.isScrubberEnabled = (boolean) newValue;
                 return true;
             });
+
+            logFolderPreference = findPreference("log_folder");
+            if (Build.VERSION.SDK_INT <= Build.VERSION_CODES.Q) {
+                // Android 10 and below always save to /sdcard/matlog.
+                logFolderPreference.setVisible(false);
+            } else {
+                logFolderPreference.setOnPreferenceClickListener(preference -> {
+                    showLogFolderDialog();
+                    return true;
+                });
+                updateLogFolderSummary();
+            }
+        }
+
+        private void updateLogFolderSummary() {
+            Context context = requireContext();
+            switch (LogStorage.getLocation(context)) {
+                case PICKED:
+                    logFolderPreference.setSummary(getString(R.string.pref_log_folder_picked,
+                            LogStorage.describePickedFolder(context)));
+                    break;
+                case SDCARD:
+                    logFolderPreference.setSummary(R.string.pref_log_folder_sdcard);
+                    break;
+                default:
+                    logFolderPreference.setSummary(R.string.pref_log_folder_documents);
+                    break;
+            }
+        }
+
+        /** Offers the default folder, or a folder of the user's own through the picker. */
+        private void showLogFolderDialog() {
+            Context context = requireContext();
+            boolean picked = LogStorage.getLocation(context) == LogStorage.Location.PICKED;
+            String defaultFolder = getString(LogStorage.hasAllFilesAccess(context)
+                    ? R.string.log_folder_sdcard : R.string.log_folder_documents);
+            CharSequence[] choices = {
+                    getString(R.string.pref_log_folder_default, defaultFolder),
+                    getString(R.string.pref_log_folder_choose)};
+
+            new MaterialAlertDialogBuilder(context)
+                    .setTitle(R.string.pref_log_folder_title)
+                    .setSingleChoiceItems(choices, picked ? 1 : 0, (dialog, which) -> {
+                        dialog.dismiss();
+                        if (which == 1) {
+                            pickLogFolder();
+                        } else if (picked) {
+                            LogStorage.clearTreeUri(context);
+                            updateLogFolderSummary();
+                        }
+                    })
+                    .setNegativeButton(android.R.string.cancel, null)
+                    .show();
+        }
+
+        private void pickLogFolder() {
+            Toast.makeText(requireContext(), R.string.storage_folder_prompt, Toast.LENGTH_LONG).show();
+
+            // Start the picker in Documents, where logs go by default.
+            Uri initial = null;
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+                initial = DocumentsContract.buildDocumentUri(
+                        "com.android.externalstorage.documents", "primary:Documents");
+            }
+            folderPicker.launch(initial);
         }
 
         private void setDefaultLevelPreferenceSummary(CharSequence entry) {

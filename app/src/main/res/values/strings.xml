@@ -252,12 +252,21 @@
     <string name="theme_amoled">AMOLED</string>
     <string name="theme_auto">Auto (system)</string>
 
-    <string name="storage_folder_prompt">Choose a folder for saved logs. A "matlog" folder is created inside it. Documents/matlog is a good choice.</string>
+    <string name="storage_folder_prompt">A "matlog" folder is created inside the folder you choose. Choose Documents to keep using Documents/matlog and see every log in it.</string>
 
     <string name="shizuku_title">Read logs through Shizuku?</string>
     <string name="shizuku_summary">Shizuku is running. Letting MatLog use it means logs are read with shell privileges, so you do not need root and Android will not ask you to confirm log access every time you open the app.</string>
     <string name="shizuku_grant">Grant</string>
-    <string name="storage_folder_not_chosen">No folder chosen, so nothing was saved.</string>
+
+    <!-- Settings: where saved logs go (Android 11 and later). -->
+    <string name="pref_log_folder_title">Log folder</string>
+    <string name="pref_log_folder_documents">Documents/matlog. MatLog lists only the logs it saved there itself, not ones from before a reinstall; choose a folder to see them all.</string>
+    <string name="pref_log_folder_sdcard">/sdcard/matlog, which root lets MatLog use</string>
+    <string name="pref_log_folder_picked">Chosen folder: %1$s/matlog</string>
+    <string name="pref_log_folder_default">Default: %1$s</string>
+    <string name="pref_log_folder_choose">Choose a folder…</string>
+    <string name="log_folder_documents" translatable="false">Documents/matlog</string>
+    <string name="log_folder_sdcard" translatable="false">/sdcard/matlog</string>
 
     <!-- Search box completions. The %1$s is a field name from the suggestion_field_* strings. -->
     <string name="suggestion_field_tag">Log tag</string>

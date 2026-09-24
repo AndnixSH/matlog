@@ -71,6 +71,12 @@
             android:persistent="true"
             android:title="@string/pref_default_log_level_title" />
 
+        <!-- Where saved logs go; Android 11 and later only. See LogStorage. -->
+        <Preference
+            android:key="log_folder"
+            android:persistent="false"
+            android:title="@string/pref_log_folder_title" />
+
     </PreferenceCategory>
 
     <PreferenceCategory android:title="@string/pref_cat_advanced"

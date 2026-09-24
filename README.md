@@ -27,14 +27,22 @@ Taken from CatLog's FAQ:
 
 #### Where are the logs saved?
 
-In a `matlog` folder inside a directory you pick once, the first time you save
-or record a log. Pick **Documents** and your logs land in
-```/Documents/matlog/```.
+No folder has to be picked first:
 
-This is the Android Storage Access Framework: apps can no longer write to a
-hardcoded path like `/sdcard/matlog` (that stopped working at Android 11), so
-the folder has to be granted by you. The grant is remembered, so you only do it
-once. If you ever want to move it, clear the app's data.
+- **Android 10 and below:** in `/sdcard/matlog`, as MatLog always did. Android
+  asks for the storage permission once.
+- **Android 11 and later:** in `/Documents/matlog/`. Any app may save its own
+  files there without a permission, but it only sees the files it saved
+  itself, so MatLog does not list logs from before a reinstall, or ones that
+  got there some other way. They are still there for a file manager.
+- **Rooted, with the F-Droid build:** in `/sdcard/matlog`. MatLog uses root to
+  give itself all-files access, and then it sees every log there. (The Google
+  Play build does not ask for that permission, which Play restricts.)
+
+To see every log in a folder without root, or to keep logs somewhere else, go
+to **Settings → Log folder → Choose a folder…** and pick one; MatLog saves to a
+`matlog` folder inside it from then on. Pick **Documents** to keep using
+`/Documents/matlog/` and see all the logs in it.
 
 #### Why does a dialog ask for access to all device logs?
 
