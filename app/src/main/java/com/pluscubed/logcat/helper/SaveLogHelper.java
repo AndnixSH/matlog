@@ -1,6 +1,7 @@
 package com.pluscubed.logcat.helper;
 
 import android.content.Context;
+import android.database.Cursor;
 import android.net.Uri;
 import android.provider.DocumentsContract;
 import android.widget.Toast;
@@ -25,7 +26,6 @@ import java.io.OutputStream;
 import java.io.PrintStream;
 import java.text.DecimalFormat;
 import java.util.ArrayList;
-import java.util.Arrays;
 import java.util.Calendar;
 import java.util.Collections;
 import java.util.Date;
@@ -290,37 +290,62 @@ public class SaveLogHelper {
         }
     }
 
-    public static Date getLastModifiedDate(Context context, String filename) {
-        DocumentFile dir = getSavedLogsDirectory(context, false);
-        if (dir != null) {
-            DocumentFile file = dir.findFile(filename);
-            if (file != null && file.exists()) {
-                return new Date(file.lastModified());
-            }
+    /** A saved log, as the saved-log lists show it. */
+    public static final class SavedLogFile {
+        public final String name;
+        public final long lastModified;
+
+        SavedLogFile(String name, long lastModified) {
+            this.name = name;
+            this.lastModified = lastModified;
         }
-        // shouldn't happen
-        log.e("file last modified date not found: %s", filename);
-        return new Date();
     }
 
     /**
-     * Get all the log filenames, order by last modified descending
+     * The saved logs, newest first, with their dates read in the same pass.
+     *
+     * <p>In a picked folder every DocumentFile getter is a separate provider
+     * query, and the lists used to make several of them per row, from the main
+     * thread: sorting by date alone was one query per comparison. On a slow
+     * emulator two logs were already enough for an ANR. One query for all the
+     * children replaces them.
      */
-    public static List<String> getLogFilenames(Context context) {
+    public static List<SavedLogFile> listSavedLogs(Context context) {
         DocumentFile dir = getSavedLogsDirectory(context, false);
         if (dir == null) {
             return Collections.emptyList();
         }
 
-        List<DocumentFile> files = new ArrayList<>(Arrays.asList(dir.listFiles()));
-
-        Collections.sort(files, (object1, object2) ->
-                Long.compare(object2.lastModified(), object1.lastModified()));
-
-        List<String> result = new ArrayList<>();
-        for (DocumentFile file : files) {
-            result.add(file.getName());
+        List<SavedLogFile> result = new ArrayList<>();
+        if ("file".equals(dir.getUri().getScheme())) {
+            File[] files = new File(dir.getUri().getPath()).listFiles();
+            if (files != null) {
+                for (File file : files) {
+                    if (file.isFile()) {
+                        result.add(new SavedLogFile(file.getName(), file.lastModified()));
+                    }
+                }
+            }
+        } else {
+            Uri children = DocumentsContract.buildChildDocumentsUriUsingTree(
+                    dir.getUri(), DocumentsContract.getDocumentId(dir.getUri()));
+            String[] projection = {
+                    DocumentsContract.Document.COLUMN_DISPLAY_NAME,
+                    DocumentsContract.Document.COLUMN_LAST_MODIFIED,
+                    DocumentsContract.Document.COLUMN_MIME_TYPE};
+            try (Cursor cursor = context.getContentResolver().query(children, projection, null, null, null)) {
+                while (cursor != null && cursor.moveToNext()) {
+                    if (DocumentsContract.Document.MIME_TYPE_DIR.equals(cursor.getString(2))) {
+                        continue;
+                    }
+                    result.add(new SavedLogFile(cursor.getString(0), cursor.getLong(1)));
+                }
+            } catch (RuntimeException e) {
+                log.e(e, "couldn't list %s", dir.getUri());
+            }
         }
+
+        Collections.sort(result, (a, b) -> Long.compare(b.lastModified, a.lastModified));
         return result;
     }
 

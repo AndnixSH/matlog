@@ -1214,16 +1214,19 @@ public class LogcatActivity extends BaseActivity implements FilterListener, LogL
 
     private void showDeleteSavedLogsDialog() {
 
-        List<CharSequence> filenames = new ArrayList<>(SaveLogHelper.getLogFilenames(this));
+        List<SaveLogHelper.SavedLogFile> files = SaveLogHelper.listSavedLogs(this);
 
-        if (filenames.isEmpty()) {
+        if (files.isEmpty()) {
             Toast.makeText(this, R.string.no_saved_logs, Toast.LENGTH_SHORT).show();
             return;
         }
 
-        final CharSequence[] filenameArray = ArrayUtil.toArray(filenames, CharSequence.class);
+        final CharSequence[] filenameArray = new CharSequence[files.size()];
+        for (int i = 0; i < filenameArray.length; i++) {
+            filenameArray[i] = files.get(i).name;
+        }
 
-        final LogFileAdapter logFileAdapter = new LogFileAdapter(this, filenames, -1, true);
+        final LogFileAdapter logFileAdapter = new LogFileAdapter(this, files, -1, true);
 
         @SuppressLint("InflateParams") LinearLayout layout = (LinearLayout) getLayoutInflater().inflate(R.layout.dialog_delete_logfiles, null);
 
@@ -1618,15 +1621,20 @@ public class LogcatActivity extends BaseActivity implements FilterListener, LogL
     private void showOpenLogFileDialog() {
         ensureStorageThen(() -> {
 
-            final List<CharSequence> filenames = new ArrayList<>(SaveLogHelper.getLogFilenames(this));
+            final List<SaveLogHelper.SavedLogFile> files = SaveLogHelper.listSavedLogs(this);
 
-            if (filenames.isEmpty()) {
+            if (files.isEmpty()) {
                 Toast.makeText(this, R.string.no_saved_logs, Toast.LENGTH_SHORT).show();
                 return;
             }
 
-            int logToSelect = mCurrentlyOpenLog != null ? filenames.indexOf(mCurrentlyOpenLog) : -1;
-            ArrayAdapter<CharSequence> logFileAdapter = new LogFileAdapter(this, filenames, logToSelect, false);
+            int logToSelect = -1;
+            for (int i = 0; i < files.size(); i++) {
+                if (files.get(i).name.equals(mCurrentlyOpenLog)) {
+                    logToSelect = i;
+                }
+            }
+            ArrayAdapter<CharSequence> logFileAdapter = new LogFileAdapter(this, files, logToSelect, false);
 
             ListView view = new ListView(this);
             view.setAdapter(logFileAdapter);
@@ -1640,7 +1648,7 @@ public class LogcatActivity extends BaseActivity implements FilterListener, LogL
 
             view.setOnItemClickListener((parent, view1, position, id) -> {
                 dialog.dismiss();
-                String filename = filenames.get(position).toString();
+                String filename = files.get(position).name;
                 openLogFile(filename);
             });
 

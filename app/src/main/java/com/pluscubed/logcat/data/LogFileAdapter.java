@@ -15,24 +15,30 @@ import com.pluscubed.logcat.R;
 import com.pluscubed.logcat.helper.SaveLogHelper;
 
 import java.text.DateFormat;
+import java.util.ArrayList;
 import java.util.Date;
 import java.util.List;
 
 public class LogFileAdapter extends ArrayAdapter<CharSequence> {
-    private List<CharSequence> objects;
+    private List<SaveLogHelper.SavedLogFile> files;
     private int checked;
     private boolean multiMode;
     private boolean[] checkedItems;
     private int resId;
+    private final DateFormat dateFormat = DateFormat.getDateTimeInstance();
 
-    public LogFileAdapter(Context context, List<CharSequence> objects, int checked, boolean multiMode) {
+    /**
+     * @param files the saved logs from {@link SaveLogHelper#listSavedLogs}, which
+     *              already carry their dates: rows must not go back to storage
+     */
+    public LogFileAdapter(Context context, List<SaveLogHelper.SavedLogFile> files, int checked, boolean multiMode) {
 
-        super(context, -1, objects);
-        this.objects = objects;
+        super(context, -1, names(files));
+        this.files = files;
         this.checked = checked;
         this.multiMode = multiMode;
         if (multiMode) {
-            checkedItems = new boolean[objects.size()];
+            checkedItems = new boolean[files.size()];
         }
         resId = multiMode ? R.layout.list_item_logfilename_multi : R.layout.list_item_logfilename_single;
     }
@@ -53,9 +59,9 @@ public class LogFileAdapter extends ArrayAdapter<CharSequence> {
         TextView text1 = view.findViewById(android.R.id.text1);
         TextView text2 = view.findViewById(android.R.id.text2);
 
-        CharSequence filename = objects.get(position);
+        SaveLogHelper.SavedLogFile file = files.get(position);
 
-        text1.setText(filename);
+        text1.setText(file.name);
 
 
         if (multiMode) {
@@ -64,12 +70,17 @@ public class LogFileAdapter extends ArrayAdapter<CharSequence> {
             button.setChecked(checked == position);
         }
 
-        Date lastModified = SaveLogHelper.getLastModifiedDate(context, filename.toString());
-        DateFormat dateFormat = DateFormat.getDateTimeInstance();
-
-        text2.setText(dateFormat.format(lastModified));
+        text2.setText(dateFormat.format(new Date(file.lastModified)));
 
         return view;
+    }
+
+    private static List<CharSequence> names(List<SaveLogHelper.SavedLogFile> files) {
+        List<CharSequence> names = new ArrayList<>();
+        for (SaveLogHelper.SavedLogFile file : files) {
+            names.add(file.name);
+        }
+        return names;
     }
 
     public void checkOrUncheck(int position) {
