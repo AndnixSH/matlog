@@ -1998,12 +1998,13 @@ public class LogcatActivity extends BaseActivity implements FilterListener, LogL
             log.d("LogReaderTask.run()");
 
             try {
-                // use "recordingMode" because we want to load all the existing lines at once
-                // for a performance boost
-                LogcatReaderLoader loader = LogcatReaderLoader.create(LogcatActivity.this, true);
-                mReader = loader.loadReader();
-
                 int maxLines = PreferenceHelper.getDisplayLimitPreference(LogcatActivity.this);
+
+                // use "recordingMode" because we want to load all the existing lines at once
+                // for a performance boost. Only the last maxLines are kept, so
+                // logcat need not replay any more than that.
+                LogcatReaderLoader loader = LogcatReaderLoader.create(LogcatActivity.this, true, maxLines);
+                mReader = loader.loadReader();
 
                 String line;
                 LinkedList<LogLine> initialLines = new LinkedList<>();

@@ -24,13 +24,13 @@ public class MultipleLogcatReader extends AbsLogcatReader {
     private BlockingQueue<String> queue = new ArrayBlockingQueue<>(1);
 
     public MultipleLogcatReader(boolean recordingMode,
-                                Map<String, String> lastLines) throws IOException {
+                                Map<String, String> lastLines, int tailLines) throws IOException {
         super(recordingMode);
         // read from all three buffers at once
         for (Entry<String, String> entry : lastLines.entrySet()) {
             String logBuffer = entry.getKey();
             String lastLine = entry.getValue();
-            ReaderThread readerThread = new ReaderThread(logBuffer, lastLine);
+            ReaderThread readerThread = new ReaderThread(logBuffer, lastLine, tailLines);
             readerThread.start();
             readerThreads.add(readerThread);
         }
@@ -83,8 +83,8 @@ public class MultipleLogcatReader extends AbsLogcatReader {
 
         private boolean killed;
 
-        public ReaderThread(String logBuffer, String lastLine) throws IOException {
-            this.reader = new SingleLogcatReader(recordingMode, logBuffer, lastLine);
+        public ReaderThread(String logBuffer, String lastLine, int tailLines) throws IOException {
+            this.reader = new SingleLogcatReader(recordingMode, logBuffer, lastLine, tailLines);
         }
 
         @Override

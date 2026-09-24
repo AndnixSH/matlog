@@ -48,6 +48,25 @@ public class LogLineTest {
     }
 
     @Test
+    public void tagsMatchingTheFilterPatternAreShownAsVerbose() {
+        String line = "09-22 12:00:00.000 E/Noisy( 5): x";
+        assertEquals(Log.VERBOSE, LogLine.newLogLine(line, false, "Noisy|Chatty").getLogLevel());
+        assertEquals(Log.ERROR, LogLine.newLogLine(line, false, "Chatty").getLogLevel());
+        // The pattern is kept compiled between lines; a changed setting must
+        // still be picked up.
+        assertEquals(Log.VERBOSE, LogLine.newLogLine(line, false, "No.*").getLogLevel());
+        // The whole tag has to match, as String.matches() required.
+        assertEquals(Log.ERROR, LogLine.newLogLine(line, false, "Nois").getLogLevel());
+    }
+
+    @Test
+    public void knownNoiseIsShownAsVerbose() {
+        assertEquals(Log.VERBOSE, parse("09-22 12:00:00.000 E/Tag( 5): Failed to read x").getLogLevel());
+        assertEquals(Log.VERBOSE, parse("09-22 12:00:00.000 W/Tag( 5): maxLineHeight=3").getLogLevel());
+        assertEquals(Log.WARN, parse("09-22 12:00:00.000 W/Tag( 5): x maxLineHeight").getLogLevel());
+    }
+
+    @Test
     public void unparseableLinesKeepTheirText() {
         LogLine line = parse("--------- beginning of main");
         assertEquals(-1, line.getLogLevel());

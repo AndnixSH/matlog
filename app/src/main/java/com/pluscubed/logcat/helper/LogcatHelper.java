@@ -17,9 +17,24 @@ public class LogcatHelper {
 
     private static UtilLogger log = new UtilLogger(LogcatHelper.class);
 
-    public static CommandProcess getLogcatProcess(String buffer) throws IOException {
+    /**
+     * Starts a logcat that streams {@code buffer}.
+     *
+     * @param tailLines how many of the entries already in the buffer to replay
+     *                  before the live ones, or 0 for all of them. Replaying
+     *                  them all can take a long while: Samsung's logd keeps its
+     *                  buffers compressed, and a tablet was seen holding 330,000
+     *                  lines, which took twelve seconds to read and parse just
+     *                  to keep the last 10,000.
+     */
+    public static CommandProcess getLogcatProcess(String buffer, int tailLines) throws IOException {
 
         List<String> args = getLogcatArgs(buffer);
+        if (tailLines > 0) {
+            // -T is -t without the exit: the last N entries, then keep going.
+            args.add("-T");
+            args.add(Integer.toString(tailLines));
+        }
 
         return RuntimeHelper.exec(args);
     }
@@ -44,7 +59,11 @@ public class LogcatHelper {
         try {
 
             List<String> args = getLogcatArgs(buffer);
-            args.add("-d"); // -d just dumps the whole thing
+            // Only the newest entry is wanted, so ask for just that; it implies
+            // -d. Dumping the whole buffer to keep its last line took over
+            // three seconds on a Samsung tablet.
+            args.add("-t");
+            args.add("1");
 
             dumpLogcatProcess = RuntimeHelper.exec(args);
             reader = new BufferedReader(new InputStreamReader(dumpLogcatProcess

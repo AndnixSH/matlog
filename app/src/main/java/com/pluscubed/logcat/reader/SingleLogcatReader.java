@@ -19,17 +19,23 @@ public class SingleLogcatReader extends AbsLogcatReader {
     private BufferedReader bufferedReader;
     private String logBuffer;
     private String lastLine;
+    private int tailLines;
 
-    public SingleLogcatReader(boolean recordingMode, String logBuffer, String lastLine) throws IOException {
+    /**
+     * @param tailLines how many existing entries logcat replays before the
+     *                  live ones; 0 replays the whole buffer
+     */
+    public SingleLogcatReader(boolean recordingMode, String logBuffer, String lastLine, int tailLines) throws IOException {
         super(recordingMode);
         this.logBuffer = logBuffer;
         this.lastLine = lastLine;
+        this.tailLines = tailLines;
         init();
     }
 
     private void init() throws IOException {
         // use the "time" log so we can see what time the logs were logged at
-        logcatProcess = LogcatHelper.getLogcatProcess(logBuffer);
+        logcatProcess = LogcatHelper.getLogcatProcess(logBuffer, tailLines);
 
         bufferedReader = new BufferedReader(new InputStreamReader(logcatProcess
                 .getInputStream()), 8192);

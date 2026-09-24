@@ -29,6 +29,16 @@ public class LogLine {
                     "(?:\\*\\s*\\d+)?" +
                     "\\): ");
 
+    /** Output that is logged at a real level but is only noise; it is shown as verbose. */
+    private static final Pattern NOISE_PATTERN = Pattern.compile("^maxLineHeight.*|Failed to read.*");
+
+    /**
+     * The tag filter from the settings, compiled. It is kept rather than
+     * recompiled for every line: String.matches() compiles its pattern each
+     * time, and a busy log runs thousands of lines a second through here.
+     */
+    private static volatile CompiledFilter compiledFilter;
+
     private static UtilLogger log = new UtilLogger(LogLine.class);
 
     private int logLevel;
@@ -64,14 +74,14 @@ public class LogLine {
             char logLevelChar = matcher.group(1).charAt(0);
 
             String logText = originalLine.substring(matcher.end());
-            if (logText.matches("^maxLineHeight.*|Failed to read.*")) {
+            if (NOISE_PATTERN.matcher(logText).matches()) {
                 logLine.setLogLevel(convertCharToLogLevel('V'));
             } else {
                 logLine.setLogLevel(convertCharToLogLevel(logLevelChar));
             }
 
             String tagText = matcher.group(2);
-            if (tagText.matches(filterPattern)) {
+            if (compileFilter(filterPattern).matcher(tagText).matches()) {
                 logLine.setLogLevel(convertCharToLogLevel('V'));
             }
 
@@ -88,6 +98,25 @@ public class LogLine {
 
         return logLine;
 
+    }
+
+    private static Pattern compileFilter(String regex) {
+        CompiledFilter filter = compiledFilter;
+        if (filter == null || !filter.regex.equals(regex)) {
+            filter = new CompiledFilter(regex, Pattern.compile(regex));
+            compiledFilter = filter;
+        }
+        return filter.pattern;
+    }
+
+    private static final class CompiledFilter {
+        final String regex;
+        final Pattern pattern;
+
+        CompiledFilter(String regex, Pattern pattern) {
+            this.regex = regex;
+            this.pattern = pattern;
+        }
     }
 
     private static int convertCharToLogLevel(char logLevelChar) {
