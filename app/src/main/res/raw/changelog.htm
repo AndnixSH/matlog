@@ -2,6 +2,81 @@
 
 <p></p><h2>Changelog</h2>
 
+<i>3.0.0</i>
+<ul>
+    <li>Rebuilt for Android 17 (API 37); Android 6.0 and later</li>
+    <li>Port Android Studio's
+        <a href='https://developer.android.com/studio/debug/logcat#key-value-search'>key-value
+            search</a>: tag:, message:, package:, process:, line:, level:, is:,
+        age:, name: and pid:, with &amp;, | and brackets. The queries mean what
+        they do in Studio. Key terms are tinted in the search box, and
+        completed as you type
+    </li>
+    <li>Add "Find in log" (Ctrl+F), which marks and steps through every
+        occurrence instead of hiding the lines that do not match
+    </li>
+    <li>Offer tag names only after "tag:", not for bare text</li>
+    <li>Read logs through <a href='https://shizuku.rikka.app/'>Shizuku</a> when
+        there is no root, in the order root &gt; Shizuku &gt; READ_LOGS, so
+        Android's "access all device logs" prompt stays away on most devices
+    </li>
+    <li>Save logs without a folder picker again: /sdcard/matlog up to
+        Android 10, Documents/matlog on Android 11 and later, and
+        /sdcard/matlog with root in the F-Droid build. Settings &gt; Log folder
+        keeps them somewhere else
+    </li>
+    <li>Add an Auto app theme that follows the system's light/dark setting, and
+        start a fresh install with the colour scheme that matches it
+    </li>
+    <li>Load the log without reading the whole buffer twice: 18 s down to about
+        1 s on a device with a large log
+    </li>
+    <li>Flatten the bottom bar to the screen edge, seat the record button in
+        its cradle, stop the bar clipping its icons, and hide the two together
+        on scroll
+    </li>
+    <li>Let the log list show through behind the record and about dialogs, and
+        stop the dark dialogs washing out against it
+    </li>
+    <li>Fix the crash when a recording starts, and the recorder hanging at
+        "Loading recorder"
+    </li>
+    <li>Fix a finished recording opening with live lines piling up on top of it
+    </li>
+    <li>Fix root log reads hanging on Android 11, and give up on an unanswered
+        su after 20 s instead of waiting for ever
+    </li>
+    <li>Fix every save creating another "matlog (1)", "matlog (2)" folder</li>
+    <li>Fix the freeze when opening the list of saved logs</li>
+    <li>Fix the colour scheme reverting whenever the app theme was applied</li>
+    <li>Fix the home-screen widget's fixed size and floating record badge</li>
+</ul>
+
+<i>2.0.0</i>
+<ul>
+    <li>Redesign around a bottom app bar, bottom sheets and a new recording
+        dialog (<a href='https://github.com/SnowVolf'>Atrem Zhiganov</a>)
+    </li>
+    <li>Add an AMOLED theme and an accent colour picker
+        (<a href='https://github.com/SnowVolf'>Atrem Zhiganov</a>)
+    </li>
+    <li>Add a new settings screen, outlined icons and a new fast scroller
+        (<a href='https://github.com/SnowVolf'>Atrem Zhiganov</a>)
+    </li>
+    <li>Add Ukrainian translation
+        (<a href='https://github.com/MrIkso'>MrIkso</a>)
+    </li>
+    <li>Update Russian translation
+        (<a href='https://github.com/SnowVolf'>Atrem Zhiganov</a>)
+    </li>
+    <li>Work around Android 10's scoped storage
+        (<a href='https://github.com/SnowVolf'>Atrem Zhiganov</a>)
+    </li>
+    <li>Fix log line parsing, theme syncing and light-theme glitches
+        (<a href='https://github.com/SnowVolf'>Atrem Zhiganov</a>)
+    </li>
+</ul>
+
 <i>1.2.3</i>
 <ul>
     <li>Fix logcat recording crashes</li>
