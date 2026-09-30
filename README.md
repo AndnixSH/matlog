@@ -101,9 +101,25 @@ Development
 - Select `fdroid` build variants to build and run immediately
 - For `play` variants:
     - Put `google-services.json` from Firebase in `app/src/play/`
-    - Put signing keys in `local.properties`
     - Without `google-services.json` the play flavor still builds; Crashlytics
       just stays inert (the google-services plugin is applied conditionally)
+
+### Release signing
+
+A release build is signed with the debug key unless `local.properties`
+(gitignored) names a keystore:
+
+```
+RELEASE_STORE_FILE=/path/to/keystore.jks
+RELEASE_STORE_PASSWORD=...
+RELEASE_KEY_ALIAS_MATLOG=...
+RELEASE_KEY_PASSWORD_MATLOG=...
+```
+
+`-P` properties of the same names take precedence, for building somewhere
+that keeps its secrets elsewhere. Check what came out with
+`apksigner verify --print-certs`: a release signed with the debug key says
+`CN=Android Debug`.
 
 ### Toolchain
 

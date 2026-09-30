@@ -2,6 +2,21 @@ plugins {
     id 'com.android.application'
 }
 
+// The signing credentials belong in local.properties, which is gitignored.
+// Gradle reads that file only for sdk.dir, so load it here, or
+// project.hasProperty below is always false and a release build is quietly
+// signed with the debug key instead. A -P property of the same name still
+// wins, for building somewhere that keeps its secrets elsewhere.
+def localProperties = new Properties()
+def localPropertiesFile = rootProject.file('local.properties')
+if (localPropertiesFile.exists()) {
+    localPropertiesFile.withInputStream { localProperties.load(it) }
+}
+def signingProperty = { String name ->
+    project.hasProperty(name) ? project.property(name) : localProperties.getProperty(name)
+}
+def releaseStoreFile = signingProperty('RELEASE_STORE_FILE')
+
 android {
     // Groovy space-assignment (propName value) is removed in Gradle 10, hence
     // the explicit '=' everywhere in this file.
@@ -23,13 +38,19 @@ android {
         vectorDrawables.useSupportLibrary = true
     }
 
-    if (project.hasProperty("RELEASE_STORE_FILE")) {
+    if (releaseStoreFile != null) {
         signingConfigs {
             release {
-                storeFile file(RELEASE_STORE_FILE)
-                storePassword RELEASE_STORE_PASSWORD
-                keyAlias RELEASE_KEY_ALIAS_MATLOG
-                keyPassword RELEASE_KEY_PASSWORD_MATLOG
+                storeFile = file(releaseStoreFile)
+                storePassword = signingProperty('RELEASE_STORE_PASSWORD')
+                keyAlias = signingProperty('RELEASE_KEY_ALIAS_MATLOG')
+                keyPassword = signingProperty('RELEASE_KEY_PASSWORD_MATLOG')
+
+                // v3 carries the proof needed to rotate to a new key later
+                // without losing the upgrade path. Android 9 and up read it;
+                // older releases ignore the block and verify with v2 or v1,
+                // which stay on.
+                enableV3Signing = true
             }
         }
     }
@@ -38,7 +59,7 @@ android {
         release {
             minifyEnabled = false
             shrinkResources = false
-            if (project.hasProperty("RELEASE_STORE_FILE")) {
+            if (releaseStoreFile != null) {
                 signingConfig = signingConfigs.release
             } else {
                 signingConfig = signingConfigs.debug
