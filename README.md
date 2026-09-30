@@ -4,14 +4,7 @@ It's CatLog, but with material goodness.
 
 Graphical log reader for Android.
 
-[<img src="https://play.google.com/intl/en_us/badges/images/generic/en_badge_web_generic.png"
-      alt="Get it on Google Play"
-      height="90">](https://play.google.com/store/apps/details?id=com.pluscubed.matlog)
-[<img src="https://f-droid.org/badge/get-it-on.png"
-      alt="Get it on F-Droid"
-      height="90">](https://f-droid.org/app/com.pluscubed.matloglibre)
-
-Based on Nolan Lawson's CatLog: [Google Play][1], [GitHub][2]
+Based on Nolan Lawson's CatLog
 
 Overview
 ---------
@@ -20,6 +13,18 @@ MatLog is a free and open-source material-style log reader for Android based on 
 It shows a scrolling (tailed) view of the Android "logcat" system log, 
 hence the goofy name.  It also allows you to record logs in real time, send logs via email, 
 and filter using a variety of criteria.
+
+MatLog 3 adds:
+
+- Android Studio's [key-value search][kv] - `tag:`, `message:`, `package:`,
+  `process:`, `level:`, `is:`, `age:` and the rest, with `&`, `|` and
+  brackets - with the terms tinted in the box and completed as you type
+- **Find in log** (Ctrl+F), which marks every occurrence and walks through
+  them instead of hiding the lines that do not match
+- Reading the log through root, [Shizuku][shizuku] or `READ_LOGS`, whichever
+  is available, so most devices never see Android's log-access prompt
+- An **Auto** theme that follows the system's light/dark setting
+- Saving logs with no folder picker on any Android version
 
 FAQs
 -------------
@@ -44,11 +49,43 @@ to **Settings → Log folder → Choose a folder…** and pick one; MatLog saves
 `matlog` folder inside it from then on. Pick **Documents** to keep using
 `/Documents/matlog/` and see all the logs in it.
 
+#### How does the search box work?
+
+It takes Android Studio's logcat queries and means the same thing by them, so
+Studio's own reference is the documentation for it:
+[Key-value search][kv].
+
+`tag:`, `message:`, `line:`, `package:` and `process:` match a case-insensitive
+substring; `tag~:` matches a regular expression and `tag=:` the whole field,
+and a leading `-` negates any of those. `level:` matches that severity or
+worse, `is:` takes `crash`, `stacktrace`, `firebase` or a level name, `age:`
+takes `30s`, `5m`, `3h` or `1d`, and `name:` recalls a saved filter. A bare
+word is looked for anywhere in the line, so a pid or a clock time is
+searchable; quote it for a phrase. `&`, `|` and brackets combine terms. Key
+terms are tinted as you type, and the box completes both the keys and their
+values.
+
+MatLog differs in three small ways: `package:mine` means MatLog itself, since
+there is no project; `pid:` is an extra; and `package:` and `process:` need
+root or Shizuku to resolve names at all.
+
 #### Why does a dialog ask for access to all device logs?
 
-Android 17 asks for explicit consent the first time an app reads the system
-log. Grant it or MatLog only sees its own logs. On older releases you instead
-need root, or a one-off `adb shell pm grant com.pluscubed.matloglibre android.permission.READ_LOGS`.
+That prompt belongs to the `READ_LOGS` permission, which recent Android
+releases make you re-confirm every session. MatLog settles once per launch how
+it is allowed to read the log, in this order:
+
+1. **root** - logcat runs through `su`, with no prompt.
+2. **[Shizuku][shizuku]** - logcat runs with Shizuku's shell privileges, also
+   with no prompt. If Shizuku is running but has not granted MatLog access,
+   MatLog offers to ask for it.
+3. **`READ_LOGS`** - granted once over adb with
+   `adb shell pm grant com.pluscubed.matloglibre android.permission.READ_LOGS`
+   (`com.pluscubed.matlog` for the Play build), and then re-confirmed through
+   that dialog.
+
+Grant whichever you have; without any of the three, MatLog only sees its own
+logs.
 
 #### I can't see any logs!
 
@@ -86,6 +123,14 @@ Note that `local.properties` must point at your SDK, e.g.
 sdk.dir=/path/to/AndroidSDK
 ```
 
+Credits
+---------
+- Developed by [Daniel Ciao (plusCubed)](http://pluscubed.com)
+- This fork is maintained by [AndnixSH](https://github.com/AndnixSH)
+- Based on [CatLog](https://github.com/nolanlawson/Catlog) by
+  [Nolan Lawson](http://nolanlawson.com)
+- MatLog is open source on [GitHub](https://github.com/AndnixSH/matlog)
+
 License
 ---------
 ```
@@ -106,6 +151,5 @@ along with this program.  If not, see <http://www.gnu.org/licenses/>.
 
 ```
 
-[1]: https://play.google.com/store/apps/details?id=com.nolanlawson.logcat
-[2]: https://github.com/nolanlawson/Catlog
-[3]: https://plus.google.com/u/0/communities/108705871773878445106
+[kv]: https://developer.android.com/studio/debug/logcat#key-value-search
+[shizuku]: https://shizuku.rikka.app/
